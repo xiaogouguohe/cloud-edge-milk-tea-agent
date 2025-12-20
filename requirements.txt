@@ -1,0 +1,3 @@
+# 核心依赖
+dashscope>=1.17.0
+python-dotenv>=1.0.0
