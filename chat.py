@@ -102,8 +102,7 @@ class ChatSession:
 def main():
     """主函数：Terminal 交互界面"""
     print("=" * 60)
-    print("云边奶茶铺智能助手")
-    print("基于 Spring AI Alibaba 多智能体系统的 Python 实现")
+    print("云边奶茶铺 AI 智能助手")
     print("=" * 60)
     print()
     

@@ -1,10 +1,10 @@
-# Spring AI Alibaba Multi-Agent Demo - Python 实现
+# 云边奶茶铺 AI 智能助手
 
-这是 Spring AI Alibaba 多智能体演示项目的 Python 实现版本。
+云边奶茶铺的 AI 智能助手系统，基于 Python 和阿里云 DashScope 实现。
 
 ## 项目简介
 
-云边奶茶铺智能助手 Demo，支持一站式咨询、点单与反馈。当前版本实现了基础的对话功能。
+云边奶茶铺智能助手，支持一站式咨询、点单与反馈。当前版本实现了基础的对话功能。
 
 ## 功能特性
 
@@ -64,11 +64,12 @@ python chat.py
 ## 项目结构
 
 ```
-spring-ai-alibaba-multi-agent-demo-python/
+cloud-edge-milk-tea-agent/
 ├── chat.py              # 主对话程序
 ├── config.py            # 配置文件
 ├── requirements.txt     # Python 依赖
-├── .env.template        # 环境变量模板
+├── run.sh              # 启动脚本
+├── .env                 # 环境变量配置（需自行创建）
 └── README.md           # 项目说明
 ```
 
@@ -88,4 +89,4 @@ spring-ai-alibaba-multi-agent-demo-python/
 
 ## 许可证
 
-与原项目保持一致。
+MIT License
