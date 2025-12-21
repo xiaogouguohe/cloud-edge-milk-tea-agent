@@ -1,3 +1,11 @@
 # 核心依赖
 dashscope>=1.17.0
 python-dotenv>=1.0.0
+
+# HTTP 服务（用于 A2A 和 MCP 协议）
+flask>=3.0.0
+requests>=2.31.0
+
+# 数据库支持（可选）
+pymysql>=1.1.0  # MySQL 支持
+redis>=5.0.0  # Redis 支持（用于服务发现或缓存）
