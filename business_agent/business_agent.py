@@ -146,13 +146,21 @@ class BusinessAgent:
             工具执行结果
         """
         try:
+            print(f"[DEBUG] 调用工具: {tool_name}, 参数: {parameters}")
             result = self.mcp_client.invoke_tool(mcp_server, tool_name, parameters)
+            print(f"[DEBUG] 工具调用结果: {result}")
             if result.get("status") == "success":
                 return str(result.get("result", ""))
             else:
-                return f"工具调用失败: {result.get('error', '未知错误')}"
+                error_msg = f"工具调用失败: {result.get('error', '未知错误')}"
+                print(f"[ERROR] {error_msg}")
+                return error_msg
         except Exception as e:
-            return f"工具调用异常: {str(e)}"
+            error_msg = f"工具调用异常: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return error_msg
     
     def _should_use_tool(self, user_input: str) -> Optional[Dict]:
         """

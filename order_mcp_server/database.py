@@ -146,7 +146,10 @@ class OrderDAO:
             datetime.now()
         )
         
-        self.db.execute(query, params)
+        cursor = self.db.execute(query, params)
+        # execute 方法已经自动提交，但为了确保，再次提交
+        if hasattr(self.db, 'connection'):
+            self.db.connection.commit()
         return self.get_order_by_id(order_data["order_id"])
     
     def delete_order(self, user_id: int, order_id: str) -> bool:
