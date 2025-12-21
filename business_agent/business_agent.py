@@ -154,6 +154,72 @@ class BusinessAgent:
         except Exception as e:
             return f"工具调用异常: {str(e)}"
     
+    def _should_use_tool(self, user_input: str) -> Optional[Dict]:
+        """
+        使用 LLM 判断是否需要调用工具，并提取参数
+        
+        Args:
+            user_input: 用户输入
+            
+        Returns:
+            工具调用信息，如果不需要则返回 None
+        """
+        # 构建工具列表描述
+        tools_desc = ""
+        for tool in self.available_tools:
+            tools_desc += f"- {tool['name']}: {tool['description']}\n"
+            if 'parameters' in tool and 'properties' in tool['parameters']:
+                props = tool['parameters']['properties']
+                for param_name, param_info in props.items():
+                    tools_desc += f"  参数 {param_name}: {param_info.get('description', '')}\n"
+        
+        # 使用 LLM 判断是否需要调用工具
+        prompt = f"""你是一个智能助手，需要判断用户请求是否需要调用工具，并提取参数。
+
+可用工具列表:
+{tools_desc}
+
+用户请求: {user_input}
+
+请判断：
+1. 是否需要调用工具？如果需要，返回工具名称
+2. 如果需要，提取所有必需的参数
+
+请以 JSON 格式返回，格式如下：
+- 如果不需要工具: {{"use_tool": false}}
+- 如果需要工具: {{"use_tool": true, "tool_name": "工具名称", "mcp_server": "order-mcp-server", "parameters": {{"参数名": "参数值"}}}}
+
+只返回 JSON，不要其他文字。"""
+        
+        try:
+            response = Generation.call(
+                model=DASHSCOPE_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                result_format='message'
+            )
+            
+            if response.status_code == 200:
+                result_text = response.output.choices[0].message.content.strip()
+                # 尝试解析 JSON（可能包含代码块标记）
+                import json
+                import re
+                
+                # 提取 JSON 部分
+                json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
+                if json_match:
+                    result_json = json.loads(json_match.group())
+                    if result_json.get("use_tool"):
+                        return {
+                            "tool": result_json.get("tool_name"),
+                            "mcp_server": result_json.get("mcp_server", "order-mcp-server"),
+                            "parameters": result_json.get("parameters", {})
+                        }
+        except Exception as e:
+            print(f"LLM 工具判断失败: {str(e)}")
+        
+        return None
+    
     def chat(self, user_input: str) -> str:
         """
         处理用户输入并返回回复
@@ -171,8 +237,12 @@ class BusinessAgent:
         })
         
         try:
-            # 先尝试判断是否需要调用工具
-            tool_call = self._extract_tool_call(user_input)
+            # 使用 LLM 判断是否需要调用工具
+            tool_call = self._should_use_tool(user_input)
+            
+            # 如果 LLM 判断失败，尝试简单的关键词匹配
+            if not tool_call:
+                tool_call = self._extract_tool_call(user_input)
             
             if tool_call:
                 # 调用工具

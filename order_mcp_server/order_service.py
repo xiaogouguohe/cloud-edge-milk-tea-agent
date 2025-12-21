@@ -2,9 +2,38 @@
 订单服务层 - 业务逻辑处理
 参考原项目的 OrderService
 """
+import sys
+from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+
+# 添加项目根目录到路径
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 from .database import OrderDAO
+
+# 尝试导入数据库管理器
+try:
+    from database.db_manager import DatabaseManager
+    from database.config import DB_TYPE, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+    
+    if DB_TYPE == "mysql":
+        product_db = DatabaseManager(
+            db_type="mysql",
+            host=MYSQL_HOST,
+            port=MYSQL_PORT,
+            user=MYSQL_USER,
+            password=MYSQL_PASSWORD,
+            database=MYSQL_DATABASE
+        )
+    else:
+        product_db = DatabaseManager(db_type="sqlite")
+    PRODUCT_DB_AVAILABLE = True
+except Exception as e:
+    PRODUCT_DB_AVAILABLE = False
+    product_db = None
+    print(f"警告: 无法初始化产品数据库: {str(e)}")
 
 
 class OrderService:
@@ -76,8 +105,11 @@ class OrderService:
         # 生成订单ID
         order_id = f"ORDER_{int(datetime.now().timestamp() * 1000)}"
         
-        # TODO: 查询产品信息获取价格（这里简化处理）
-        unit_price = 18.00  # 默认价格，实际应该从 products 表查询
+        # 查询产品信息获取价格
+        unit_price = self._get_product_price(product_name)
+        if unit_price is None:
+            raise ValueError(f"产品不存在: {product_name}")
+        
         total_price = unit_price * quantity
         
         order_data = {
@@ -134,6 +166,41 @@ class OrderService:
             订单列表
         """
         return self.order_dao.query_orders(user_id, filters)
+    
+    def _get_product_price(self, product_name: str) -> Optional[float]:
+        """
+        查询产品价格
+        
+        Args:
+            product_name: 产品名称
+            
+        Returns:
+            产品价格，如果不存在则返回 None
+        """
+        if not PRODUCT_DB_AVAILABLE or product_db is None:
+            # 如果没有数据库，使用默认价格
+            default_prices = {
+                "云边茉莉": 18.00,
+                "桂花云露": 20.00,
+                "云雾观音": 22.00,
+                "珍珠奶茶": 15.00,
+                "红豆奶茶": 16.00,
+            }
+            return default_prices.get(product_name, 18.00)
+        
+        try:
+            if product_db.db_type == "sqlite":
+                query = "SELECT price FROM products WHERE name = ? AND status = 1"
+            else:
+                query = "SELECT price FROM products WHERE name = %s AND status = 1"
+            
+            product = product_db.fetch_one(query, (product_name,))
+            if product:
+                return float(product.get("price", 18.00))
+            return None
+        except Exception as e:
+            print(f"查询产品价格失败: {str(e)}")
+            return None
     
     def format_order_response(self, order: Dict) -> str:
         """
