@@ -146,11 +146,20 @@ class OrderDAO:
             datetime.now()
         )
         
+        print(f"[OrderDAO] 准备插入订单 - order_id: {order_data['order_id']}, user_id: {order_data['user_id']}")
         cursor = self.db.execute(query, params)
         # execute 方法已经自动提交，但为了确保，再次提交
         if hasattr(self.db, 'connection'):
             self.db.connection.commit()
-        return self.get_order_by_id(order_data["order_id"])
+            print(f"[OrderDAO] 事务已提交")
+        
+        # 立即查询验证
+        result = self.get_order_by_id(order_data["order_id"])
+        if result:
+            print(f"[OrderDAO] 订单查询成功 - order_id: {result.get('order_id')}")
+        else:
+            print(f"[OrderDAO] ⚠️  订单查询失败 - 订单未找到")
+        return result
     
     def delete_order(self, user_id: int, order_id: str) -> bool:
         """

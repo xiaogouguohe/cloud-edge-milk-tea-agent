@@ -247,6 +247,14 @@ class OrderMCPServer:
                      iceLevel: str, quantity: int, remark: Optional[str] = None) -> str:
         """工具：创建订单"""
         try:
+            # 确保 userId 是整数类型
+            if isinstance(userId, str):
+                userId = int(userId)
+            if isinstance(quantity, str):
+                quantity = int(quantity)
+            
+            print(f"[OrderMCPServer] 创建订单 - userId: {userId} (type: {type(userId)}), product: {productName}, quantity: {quantity}")
+            
             sweetness_num = self._convert_sweetness(sweetness)
             ice_level_num = self._convert_ice_level(iceLevel)
             
@@ -259,6 +267,16 @@ class OrderMCPServer:
                 remark=remark
             )
             
+            print(f"[OrderMCPServer] 订单创建成功 - order_id: {order.get('order_id')}, user_id: {order.get('user_id')}")
+            
+            # 验证订单是否真的写入数据库
+            if self.order_service.order_dao.db:
+                verify_order = self.order_service.order_dao.get_order_by_id(order['order_id'])
+                if verify_order:
+                    print(f"[OrderMCPServer] 数据库验证成功 - 订单已写入")
+                else:
+                    print(f"[OrderMCPServer] ⚠️  数据库验证失败 - 订单未找到")
+            
             return f"""订单创建成功！
 订单ID: {order['order_id']}
 用户ID: {userId}
@@ -268,7 +286,11 @@ class OrderMCPServer:
 数量: {quantity}
 总价: ¥{order['total_price']:.2f}"""
         except Exception as e:
-            return f"创建订单失败: {str(e)}"
+            import traceback
+            error_msg = f"创建订单失败: {str(e)}"
+            print(f"[OrderMCPServer] {error_msg}")
+            traceback.print_exc()
+            return error_msg
     
     def _get_orders_by_user(self, userId: int) -> str:
         """工具：获取用户的所有订单"""

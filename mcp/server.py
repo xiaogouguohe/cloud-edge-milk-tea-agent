@@ -50,17 +50,26 @@ class MCPServer:
                 data = request.json or {}
                 parameters = data.get("parameters", {})
                 
+                print(f"[MCPServer] 调用工具: {tool_name}")
+                print(f"[MCPServer] 参数: {parameters}")
+                
                 # 调用工具
                 tool = self.tools[tool_name]
                 result = tool.invoke(parameters)
+                
+                print(f"[MCPServer] 工具执行结果: {result[:200] if isinstance(result, str) and len(result) > 200 else result}")
                 
                 return jsonify({
                     "result": result,
                     "status": "success"
                 })
             except Exception as e:
+                import traceback
+                error_msg = str(e)
+                print(f"[MCPServer] 工具调用异常: {error_msg}")
+                traceback.print_exc()
                 return jsonify({
-                    "error": str(e),
+                    "error": error_msg,
                     "status": "error"
                 }), 500
         
