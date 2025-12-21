@@ -2,16 +2,25 @@
   "order_agent": {
     "host": "localhost",
     "port": 10006,
-    "url": "http://localhost:10006"
+    "url": "http://localhost:10006",
+    "description": "云边奶茶铺订单处理智能体"
+  },
+  "order-mcp-server": {
+    "host": "localhost",
+    "port": 10002,
+    "url": "http://localhost:10002",
+    "description": "订单管理 MCP Server"
   },
   "consult_agent": {
     "host": "localhost",
     "port": 10005,
-    "url": "http://localhost:10005"
+    "url": "http://localhost:10005",
+    "description": "云边奶茶铺咨询智能体"
   },
   "feedback_agent": {
     "host": "localhost",
     "port": 10007,
-    "url": "http://localhost:10007"
+    "url": "http://localhost:10007",
+    "description": "云边奶茶铺反馈智能体"
   }
 }

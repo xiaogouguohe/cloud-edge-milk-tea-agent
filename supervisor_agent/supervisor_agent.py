@@ -12,6 +12,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
+from service_discovery import ServiceDiscovery
+from a2a.client import A2AClient
 
 # 设置 DashScope API Key
 dashscope.api_key = DASHSCOPE_API_KEY
@@ -58,7 +60,7 @@ class SupervisorAgent:
             "content": self.system_prompt
         })
         
-        # 子智能体配置（目前都是未实现状态）
+        # 子智能体配置
         self.sub_agents = {
             "consult_agent": {
                 "name": "咨询智能体",
@@ -68,7 +70,7 @@ class SupervisorAgent:
             "order_agent": {
                 "name": "订单智能体",
                 "description": "处理订单相关业务，包括下单、查询、修改等",
-                "implemented": False
+                "implemented": True  # 已实现，可以通过 A2A 协议调用
             },
             "feedback_agent": {
                 "name": "反馈智能体",
@@ -76,6 +78,9 @@ class SupervisorAgent:
                 "implemented": False
             }
         }
+        
+        # A2A 客户端（用于调用子智能体）
+        self.a2a_client = A2AClient(service_discovery=self.service_discovery)
     
     def route_to_agent(self, user_input: str) -> Optional[str]:
         """
@@ -109,7 +114,7 @@ class SupervisorAgent:
     
     def call_sub_agent(self, agent_name: str, user_input: str) -> str:
         """
-        调用子智能体处理请求
+        调用子智能体处理请求（使用 A2A 协议）
         
         Args:
             agent_name: 子智能体名称
@@ -127,9 +132,39 @@ class SupervisorAgent:
         if not agent_info["implemented"]:
             return f"我理解您的需求，这需要 {agent_info['name']} 来处理。该功能正在开发中，敬请期待。"
         
-        # TODO: 后续实现实际的子智能体调用逻辑
-        # 例如：HTTP 请求、直接函数调用等
-        return f"[{agent_info['name']}] 处理中..."
+        # 使用 A2A 协议调用子智能体
+        try:
+            # 构建 A2A 协议请求数据
+            a2a_request = {
+                "input": user_input,
+                "chat_id": self.chat_id,
+                "user_id": self.user_id
+            }
+            
+            # 通过 A2A Client 调用子智能体
+            a2a_response = self.a2a_client.call_agent(agent_name, a2a_request)
+            
+            # 提取响应内容
+            if isinstance(a2a_response, dict):
+                output = a2a_response.get("output", "")
+                if output:
+                    return output
+                # 如果没有 output 字段，尝试直接返回整个响应
+                return str(a2a_response)
+            else:
+                return str(a2a_response)
+                
+        except ValueError as e:
+            # 服务未找到
+            return f"抱歉，{agent_info['name']} 服务暂时不可用，请稍后再试。"
+        except ConnectionError as e:
+            # 连接错误
+            return f"抱歉，无法连接到 {agent_info['name']}，请确保服务已启动。"
+        except Exception as e:
+            # 其他错误
+            error_msg = str(e)
+            print(f"调用 {agent_name} 时出现错误: {error_msg}")
+            return f"抱歉，调用 {agent_info['name']} 时出现了问题，请稍后再试。"
     
     def chat(self, user_input: str) -> str:
         """

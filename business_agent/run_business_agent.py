@@ -18,20 +18,20 @@ def main():
     print("=" * 60)
     print()
     
-    # 创建业务智能体
+    # 创建业务智能体（作为 order_agent）
     agent = BusinessAgent(
-        agent_name="business_agent",
-        description="云边奶茶铺业务处理智能体，处理订单、咨询等业务"
+        agent_name="order_agent",
+        description="云边奶茶铺订单处理智能体，处理订单相关业务"
     )
     
-    # 注册到服务发现（可选）
+    # 注册到服务发现（作为 order_agent）
     sd = ServiceDiscovery(method="config")
     sd.register(
-        "business_agent",
+        "order_agent",
         host="localhost",
-        port=10009,
-        url="http://localhost:10009",
-        description="云边奶茶铺业务处理智能体"
+        port=10006,
+        url="http://localhost:10006",
+        description="云边奶茶铺订单处理智能体"
     )
     
     print(f"业务智能体已注册到服务发现")
@@ -42,7 +42,7 @@ def main():
     
     # 启动 A2A 服务
     try:
-        agent.start_a2a_server(host='0.0.0.0', port=10009, debug=False)
+        agent.start_a2a_server(host='0.0.0.0', port=10006, debug=False)
     except KeyboardInterrupt:
         print("\n服务已停止")
 
