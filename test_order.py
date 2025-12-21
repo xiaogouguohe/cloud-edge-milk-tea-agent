@@ -135,10 +135,13 @@ def start_services(auto_start=False):
         print("⚠️  端口 10002 已被占用，跳过启动 OrderMCPServer")
     else:
         print("启动进程2: OrderMCPServer...")
+        # 将输出重定向到文件，方便查看日志
+        log_file = project_root / "logs" / "mcp_server_test.log"
+        log_file.parent.mkdir(exist_ok=True)
         proc = subprocess.Popen(
             [sys.executable, "order_mcp_server/run_order_mcp_server.py"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=open(log_file, 'w'),
+            stderr=subprocess.STDOUT,  # 将 stderr 也重定向到 stdout
             cwd=project_root
         )
         processes['mcp_server'] = proc
@@ -154,16 +157,20 @@ def start_services(auto_start=False):
         else:
             print("  ⚠️  OrderMCPServer 可能未成功启动（10秒后仍无法连接）")
             print("  请检查日志或手动验证服务是否运行")
+            print(f"  日志文件: {project_root / 'logs' / 'mcp_server_test.log'}")
     
     # 启动进程3: OrderAgent
     if is_port_in_use(10006):
         print("⚠️  端口 10006 已被占用，跳过启动 OrderAgent")
     else:
         print("启动进程3: OrderAgent...")
+        # 将输出重定向到文件，方便查看日志
+        log_file = project_root / "logs" / "order_agent_test.log"
+        log_file.parent.mkdir(exist_ok=True)
         proc = subprocess.Popen(
             [sys.executable, "business_agent/run_business_agent.py"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=open(log_file, 'w'),
+            stderr=subprocess.STDOUT,  # 将 stderr 也重定向到 stdout
             cwd=project_root
         )
         processes['order_agent'] = proc
@@ -179,6 +186,7 @@ def start_services(auto_start=False):
         else:
             print("  ⚠️  OrderAgent 可能未成功启动（10秒后仍无法连接）")
             print("  请检查日志或手动验证服务是否运行")
+            print(f"  日志文件: {project_root / 'logs' / 'order_agent_test.log'}")
     
     print()
     return processes
@@ -304,10 +312,32 @@ def test_create_order(auto_start_services=False):
         print()
         
         # 等待一下，确保数据已写入
-        time.sleep(1)
+        time.sleep(2)
+        
+        # 显示服务日志（如果有）
+        mcp_log = project_root / "logs" / "mcp_server_test.log"
+        agent_log = project_root / "logs" / "order_agent_test.log"
+        
+        if mcp_log.exists():
+            print("\n[OrderMCPServer 日志（最后20行）]:")
+            print("-" * 80)
+            with open(mcp_log, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                for line in lines[-20:]:
+                    print(line.rstrip())
+            print("-" * 80)
+        
+        if agent_log.exists():
+            print("\n[OrderAgent 日志（最后20行）]:")
+            print("-" * 80)
+            with open(agent_log, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                for line in lines[-20:]:
+                    print(line.rstrip())
+            print("-" * 80)
         
         # 3. 验证后查询
-        print("步骤3: 验证后查询数据库")
+        print("\n步骤3: 验证后查询数据库")
         print("-" * 80)
         
         if DB_AVAILABLE:

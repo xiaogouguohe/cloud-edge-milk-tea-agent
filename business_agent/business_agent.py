@@ -213,16 +213,38 @@ class BusinessAgent:
                 import json
                 import re
                 
-                # 提取 JSON 部分
-                json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
+                # 提取 JSON 部分（支持多行 JSON）
+                json_match = re.search(r'\{.*?\}', result_text, re.DOTALL)
                 if json_match:
-                    result_json = json.loads(json_match.group())
-                    if result_json.get("use_tool"):
-                        return {
-                            "tool": result_json.get("tool_name"),
-                            "mcp_server": result_json.get("mcp_server", "order-mcp-server"),
-                            "parameters": result_json.get("parameters", {})
-                        }
+                    try:
+                        result_json = json.loads(json_match.group())
+                        if result_json.get("use_tool"):
+                            tool_info = {
+                                "tool": result_json.get("tool_name"),
+                                "mcp_server": result_json.get("mcp_server", "order-mcp-server"),
+                                "parameters": result_json.get("parameters", {})
+                            }
+                            # 确保 userId 是整数类型
+                            if "userId" in tool_info["parameters"]:
+                                userId = tool_info["parameters"]["userId"]
+                                if isinstance(userId, str):
+                                    tool_info["parameters"]["userId"] = int(userId)
+                                elif not isinstance(userId, int):
+                                    tool_info["parameters"]["userId"] = int(userId)
+                            # 确保 quantity 是整数类型
+                            if "quantity" in tool_info["parameters"]:
+                                quantity = tool_info["parameters"]["quantity"]
+                                if isinstance(quantity, str):
+                                    tool_info["parameters"]["quantity"] = int(quantity)
+                                elif not isinstance(quantity, int):
+                                    tool_info["parameters"]["quantity"] = int(quantity)
+                            
+                            import sys
+                            print(f"[BusinessAgent] LLM 提取的工具调用: {tool_info}", file=sys.stderr, flush=True)
+                            return tool_info
+                    except json.JSONDecodeError as e:
+                        import sys
+                        print(f"[BusinessAgent] JSON 解析失败: {e}, 原始文本: {result_text[:200]}", file=sys.stderr, flush=True)
         except Exception as e:
             print(f"LLM 工具判断失败: {str(e)}")
         
@@ -253,6 +275,9 @@ class BusinessAgent:
                 tool_call = self._extract_tool_call(user_input)
             
             if tool_call:
+                # 输出到 stderr，确保能看到（即使后台运行）
+                import sys
+                print(f"[BusinessAgent] 检测到工具调用: {tool_call}", file=sys.stderr, flush=True)
                 # 调用工具
                 tool_result = self._invoke_tool(
                     tool_call["tool"],
@@ -261,6 +286,19 @@ class BusinessAgent:
                 )
                 
                 # 将工具结果添加到对话历史
+                import sys
+                print(f"[BusinessAgent] 工具调用结果: {tool_result[:200]}", file=sys.stderr, flush=True)
+                
+                # 检查工具调用是否成功
+                if "失败" in tool_result or "错误" in tool_result or "异常" in tool_result:
+                    # 工具调用失败，直接返回错误信息
+                    print(f"[BusinessAgent] 工具调用失败，返回错误信息", file=sys.stderr, flush=True)
+                    self.history.append({
+                        "role": "assistant",
+                        "content": tool_result
+                    })
+                    return tool_result
+                
                 self.history.append({
                     "role": "assistant",
                     "content": f"工具调用结果: {tool_result}"
