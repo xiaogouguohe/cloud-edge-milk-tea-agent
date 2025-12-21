@@ -21,6 +21,16 @@ ENV/
 
 # 日志
 *.log
+logs/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# 配置文件（包含敏感信息）
+.user_config
 
 # 系统文件
 .DS_Store
