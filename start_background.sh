@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# 启动所有服务脚本（方案A）
-# 进程1: SupervisorAgent (用户对话)
-# 进程2: OrderMCPServer + 数据库
-# 进程3: OrderAgent
+# 启动后台服务（进程2和进程3）
+# 用于方案A部署
 
 # 创建日志目录
 mkdir -p logs
@@ -18,11 +16,10 @@ check_port() {
 }
 
 echo "=========================================="
-echo "启动云边奶茶铺 AI Agent 服务（方案A）"
+echo "启动后台服务（方案A）"
 echo "=========================================="
 echo ""
-echo "部署方案:"
-echo "  进程1: SupervisorAgent (用户对话)"
+echo "将启动:"
 echo "  进程2: OrderMCPServer + 数据库"
 echo "  进程3: OrderAgent"
 echo ""
@@ -86,23 +83,6 @@ echo "日志文件:"
 echo "  - OrderMCPServer: logs/mcp_server.log"
 echo "  - OrderAgent:     logs/order_agent.log"
 echo ""
-echo "=========================================="
-echo "现在启动进程1: SupervisorAgent"
-echo "=========================================="
-echo ""
-echo "运行以下命令启动用户对话:"
+echo "现在可以在另一个终端运行:"
 echo "  python3 chat.py"
 echo ""
-echo "或直接按回车键启动..."
-read -p "按回车键启动 SupervisorAgent，或 Ctrl+C 取消: "
-echo ""
-echo "启动 SupervisorAgent..."
-echo "=========================================="
-python3 chat.py
-
-# 清理：当 SupervisorAgent 退出时，停止其他服务
-echo ""
-echo "=========================================="
-echo "SupervisorAgent 已退出，停止后台服务..."
-echo "=========================================="
-./stop_all.sh
