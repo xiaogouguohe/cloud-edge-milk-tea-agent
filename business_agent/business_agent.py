@@ -100,26 +100,23 @@ class BusinessAgent:
 - 保护用户隐私，不要泄露其他用户的信息
 """
     
-    def _extract_tool_call(self, llm_response: str) -> Optional[Dict]:
+    def _extract_tool_call(self, user_input: str) -> Optional[Dict]:
         """
-        从 LLM 响应中提取工具调用信息
-        
-        这是一个简化的实现，实际可以使用更智能的方式（如函数调用）
+        从用户输入中提取工具调用信息（关键词匹配，作为 LLM 的备选方案）
         
         Args:
-            llm_response: LLM 的响应文本
+            user_input: 用户输入文本
             
         Returns:
             工具调用信息，格式: {"tool": "tool_name", "parameters": {...}}
         """
-        # 简单的关键词匹配（后续可以改进为更智能的解析）
-        response_lower = llm_response.lower()
+        import re
+        user_input_lower = user_input.lower()
         
         # 检查是否需要调用工具
-        if "order-get-order" in response_lower or "查询订单" in response_lower:
+        if "order-get-order" in user_input_lower or "查询订单" in user_input_lower:
             # 尝试提取订单ID
-            import re
-            order_id_match = re.search(r'ORDER[_\d]+', llm_response, re.IGNORECASE)
+            order_id_match = re.search(r'ORDER[_\d]+', user_input, re.IGNORECASE)
             if order_id_match:
                 return {
                     "tool": "order-get-order",
@@ -127,9 +124,64 @@ class BusinessAgent:
                     "parameters": {"orderId": order_id_match.group()}
                 }
         
-        if "order-create-order" in response_lower or "创建订单" in response_lower or "下单" in response_lower:
-            # 这里需要更复杂的参数提取，暂时返回 None，让 LLM 继续处理
-            return None
+        if "order-create-order" in user_input_lower or "创建订单" in user_input_lower or "下单" in user_input_lower:
+            # 从用户输入中提取参数
+            # 提取用户ID
+            user_id_match = re.search(r'用户ID[是：:]\s*(\d+)', user_input)
+            if user_id_match:
+                user_id = int(user_id_match.group(1))
+            else:
+                # 使用当前会话的用户ID
+                user_id = int(self.user_id) if isinstance(self.user_id, str) else self.user_id
+            
+            # 提取产品名称（简单匹配）
+            products = ["云边茉莉", "桂花云露", "云雾观音", "珍珠奶茶", "红豆奶茶"]
+            product_name = None
+            for p in products:
+                if p in user_input:
+                    product_name = p
+                    break
+            
+            # 提取甜度
+            sweetness_map = {
+                "无糖": "无糖", "微糖": "微糖", "半糖": "半糖",
+                "少糖": "少糖", "标准糖": "标准糖"
+            }
+            sweetness = "标准糖"
+            for key in sweetness_map:
+                if key in user_input:
+                    sweetness = key
+                    break
+            
+            # 提取冰量
+            ice_level_map = {
+                "热": "热", "温": "温", "去冰": "去冰",
+                "少冰": "少冰", "正常冰": "正常冰"
+            }
+            ice_level = "正常冰"
+            for key in ice_level_map:
+                if key in user_input:
+                    ice_level = key
+                    break
+            
+            # 提取数量
+            quantity_match = re.search(r'(\d+)\s*[杯份]', user_input)
+            quantity = int(quantity_match.group(1)) if quantity_match else 1
+            
+            if product_name:
+                import sys
+                print(f"[BusinessAgent] 关键词匹配提取参数: userId={user_id}, product={product_name}", file=sys.stderr, flush=True)
+                return {
+                    "tool": "order-create-order-with-user",
+                    "mcp_server": "order-mcp-server",
+                    "parameters": {
+                        "userId": user_id,
+                        "productName": product_name,
+                        "sweetness": sweetness,
+                        "iceLevel": ice_level,
+                        "quantity": quantity
+                    }
+                }
         
         return None
     
@@ -189,13 +241,21 @@ class BusinessAgent:
 
 用户请求: {user_input}
 
+重要提示:
+- 当前用户ID是: {self.user_id}（整数类型）
+- 如果工具需要 userId 参数，必须使用整数类型: {self.user_id}
+- 从用户输入中提取产品名称、甜度、冰量、数量等信息
+- 如果用户输入中包含用户ID，使用用户输入中的ID；否则使用当前会话的用户ID: {self.user_id}
+
 请判断：
 1. 是否需要调用工具？如果需要，返回工具名称
-2. 如果需要，提取所有必需的参数
+2. 如果需要，提取所有必需的参数（userId 必须是整数类型）
 
 请以 JSON 格式返回，格式如下：
 - 如果不需要工具: {{"use_tool": false}}
-- 如果需要工具: {{"use_tool": true, "tool_name": "工具名称", "mcp_server": "order-mcp-server", "parameters": {{"参数名": "参数值"}}}}
+- 如果需要工具: {{"use_tool": true, "tool_name": "工具名称", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "productName": "产品名称", "sweetness": "甜度", "iceLevel": "冰量", "quantity": 数量}}}}
+
+注意：userId 和 quantity 必须是数字类型，不是字符串。
 
 只返回 JSON，不要其他文字。"""
         
@@ -377,12 +437,22 @@ class BusinessAgent:
         def handle_request(data: Dict) -> str:
             """处理 A2A 协议请求"""
             user_input = data.get("input", "")
-            # 移除 userId 标签（如果存在）
-            if "<userId>" in user_input:
-                user_input = user_input.split("<userId>")[0].strip()
-            
-            # 调用 chat 方法处理
-            return self.chat(user_input)
+            # 从 A2A 请求中获取 user_id（如果存在）
+            request_user_id = data.get("user_id")
+            if request_user_id:
+                # 临时更新 user_id（用于本次请求）
+                original_user_id = self.user_id
+                self.user_id = str(request_user_id)  # 确保是字符串类型
+                try:
+                    # 调用 chat 方法处理
+                    result = self.chat(user_input)
+                    return result
+                finally:
+                    # 恢复原始 user_id
+                    self.user_id = original_user_id
+            else:
+                # 如果没有提供 user_id，使用默认值
+                return self.chat(user_input)
         
         a2a_server.set_handler(handle_request)
         
