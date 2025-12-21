@@ -60,6 +60,9 @@ class SupervisorAgent:
             "content": self.system_prompt
         })
         
+        # 服务发现（用于查找子智能体地址）
+        self.service_discovery = ServiceDiscovery(method="config")
+        
         # 子智能体配置
         self.sub_agents = {
             "consult_agent": {
