@@ -1,0 +1,17 @@
+{
+  "order_agent": {
+    "host": "localhost",
+    "port": 10006,
+    "url": "http://localhost:10006"
+  },
+  "consult_agent": {
+    "host": "localhost",
+    "port": 10005,
+    "url": "http://localhost:10005"
+  },
+  "feedback_agent": {
+    "host": "localhost",
+    "port": 10007,
+    "url": "http://localhost:10007"
+  }
+}
