@@ -37,7 +37,7 @@ python order_mcp_server/run_order_mcp_server.py
 
 ```bash
 # 终端 2
-python business_agent/run_business_agent.py
+python order_agent/run_order_agent.py
 
 # 服务运行在 http://localhost:10006
 # 作为 A2A Server，接收 SupervisorAgent 的调用

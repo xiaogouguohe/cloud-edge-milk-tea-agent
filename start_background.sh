@@ -54,7 +54,7 @@ echo ""
 
 # 启动 OrderAgent（进程3，后台运行）
 echo "进程3: 启动 OrderAgent (端口 10006)..."
-python3 business_agent/run_business_agent.py > logs/order_agent.log 2>&1 &
+python3 order_agent/run_order_agent.py > logs/order_agent.log 2>&1 &
 AGENT_PID=$!
 echo "   OrderAgent PID: $AGENT_PID"
 sleep 3

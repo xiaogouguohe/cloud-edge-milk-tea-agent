@@ -168,7 +168,7 @@ def start_services(auto_start=False):
         log_file = project_root / "logs" / "order_agent_test.log"
         log_file.parent.mkdir(exist_ok=True)
         proc = subprocess.Popen(
-            [sys.executable, "business_agent/run_business_agent.py"],
+            [sys.executable, "order_agent/run_order_agent.py"],
             stdout=open(log_file, 'w'),
             stderr=subprocess.STDOUT,  # 将 stderr 也重定向到 stdout
             cwd=project_root

@@ -44,7 +44,7 @@ curl http://localhost:10002/mcp/health
 **终端2**:
 ```bash
 cd /Users/xiaogouguohe/workspace/cloud-edge-milk-tea-agent
-python3 business_agent/run_business_agent.py
+python3 order_agent/run_order_agent.py
 ```
 
 **说明**:
@@ -92,7 +92,7 @@ python3 chat.py
 
 ```bash
 # 查看进程
-ps aux | grep -E "order_mcp_server|business_agent|chat.py"
+ps aux | grep -E "order_mcp_server|order_agent|chat.py"
 
 # 查看端口占用
 lsof -i :10002

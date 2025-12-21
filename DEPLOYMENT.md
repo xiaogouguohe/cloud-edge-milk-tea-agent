@@ -68,12 +68,12 @@ python order_mcp_server/run_order_mcp_server.py
 
 ### 进程3: OrderAgent + 数据库
 
-**文件**: `business_agent/run_business_agent.py`
+**文件**: `order_agent/run_order_agent.py`
 
 ```bash
 # 终端 3
 cd /Users/xiaogouguohe/workspace/cloud-edge-milk-tea-agent
-python business_agent/run_business_agent.py
+python order_agent/run_order_agent.py
 ```
 
 **功能**:
@@ -118,7 +118,7 @@ sleep 2
 
 # 启动 OrderAgent（后台运行）
 echo "启动 OrderAgent (端口 10006)..."
-python business_agent/run_business_agent.py > logs/order_agent.log 2>&1 &
+python order_agent/run_order_agent.py > logs/order_agent.log 2>&1 &
 AGENT_PID=$!
 echo "OrderAgent PID: $AGENT_PID"
 
@@ -172,7 +172,7 @@ Requires=order-mcp-server.service
 Type=simple
 User=your_user
 WorkingDirectory=/path/to/cloud-edge-milk-tea-agent
-ExecStart=/usr/bin/python3 business_agent/run_business_agent.py
+ExecStart=/usr/bin/python3 order_agent/run_order_agent.py
 Restart=always
 RestartSec=10
 

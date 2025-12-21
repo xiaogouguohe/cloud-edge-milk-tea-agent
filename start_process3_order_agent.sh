@@ -56,10 +56,10 @@ echo "=========================================="
 echo ""
 
 # 前台运行（可以看到日志）
-python3 business_agent/run_business_agent.py
+python3 order_agent/run_order_agent.py
 
 # 如果需要在后台运行，取消下面的注释
-# python3 business_agent/run_business_agent.py > logs/order_agent.log 2>&1 &
+# python3 order_agent/run_order_agent.py > logs/order_agent.log 2>&1 &
 # AGENT_PID=$!
 # echo $AGENT_PID > logs/order_agent.pid
 # echo "OrderAgent 已在后台启动 (PID: $AGENT_PID)"

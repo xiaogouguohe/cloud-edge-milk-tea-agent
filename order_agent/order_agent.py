@@ -1,6 +1,6 @@
 """
-业务智能体 - 处理订单、咨询等业务逻辑
-参考原项目的 ReactAgent 设计，支持 A2A 协议和 MCP 工具调用
+订单智能体 - 处理订单相关业务
+参考原项目的 OrderAgent 设计，支持 A2A 协议和 MCP 工具调用
 """
 import sys
 from pathlib import Path
@@ -21,24 +21,19 @@ from a2a.server import A2AServer
 dashscope.api_key = DASHSCOPE_API_KEY
 
 
-class BusinessAgent:
-    """业务智能体 - 使用工具处理业务请求（类似原项目的 ReactAgent）"""
+class OrderAgent:
+    """订单智能体 - 处理订单相关业务，使用 MCP 工具"""
     
-    def __init__(self, agent_name: str = "business_agent", 
-                 description: str = "业务处理智能体",
-                 user_id: str = "default_user", 
-                 chat_id: str = "default_chat"):
+    def __init__(self, user_id: str = "default_user", chat_id: str = "default_chat"):
         """
-        初始化业务智能体
+        初始化订单智能体
         
         Args:
-            agent_name: Agent 名称
-            description: Agent 描述
             user_id: 用户ID
             chat_id: 对话ID
         """
-        self.agent_name = agent_name
-        self.description = description
+        self.agent_name = "order_agent"
+        self.description = "云边奶茶铺订单处理智能体，处理订单相关业务，包括下单、查询、修改等"
         self.user_id = user_id
         self.chat_id = chat_id
         self.history: List[Dict[str, str]] = []
@@ -66,8 +61,9 @@ class BusinessAgent:
             # 尝试从 order-mcp-server 获取工具
             tools = self.mcp_client.list_tools("order-mcp-server")
             self.available_tools = [tool.to_dict() for tool in tools]
+            print(f"[OrderAgent] 从 order-mcp-server 加载了 {len(self.available_tools)} 个工具", file=sys.stderr, flush=True)
         except Exception as e:
-            print(f"警告: 无法加载 MCP 工具: {str(e)}")
+            print(f"[OrderAgent] 警告: 无法从 order-mcp-server 加载 MCP 工具: {str(e)}", file=sys.stderr, flush=True)
             self.available_tools = []
     
     def _build_system_prompt(self) -> str:
@@ -77,11 +73,15 @@ class BusinessAgent:
             tools_description = "\n可用工具:\n"
             for tool in self.available_tools:
                 tools_description += f"- {tool['name']}: {tool['description']}\n"
+                if 'parameters' in tool and 'properties' in tool['parameters']:
+                    props = tool['parameters']['properties']
+                    for param_name, param_info in props.items():
+                        tools_description += f"  参数 {param_name}: {param_info.get('description', '')} (类型: {param_info.get('type', 'string')}, 必需: {'required' in tool['parameters'] and param_name in tool['parameters']['required']})\n"
         else:
             tools_description = "\n注意: 当前没有可用的工具，MCP Server 可能未启动。\n"
         
         return f"""角色与职责:
-你是云边奶茶铺的业务处理智能体，负责处理各种业务请求，包括订单、咨询、反馈等。
+你是云边奶茶铺的订单处理智能体，专门负责处理订单相关业务。
 
 {self.description}
 
@@ -94,10 +94,15 @@ class BusinessAgent:
 4. 整合工具返回的结果，生成友好的回复
 
 约束:
-- 只能使用提供的工具处理业务请求
+- 只能使用提供的工具处理订单相关请求
 - 如果工具不可用，需要告知用户
 - 回答要友好、专业，体现云边奶茶铺的品牌形象
 - 保护用户隐私，不要泄露其他用户的信息
+
+注意:
+- 如果用户想要下单,必须要用户提供userId,只有用户Id存在时才允许下单。
+- 如果用户想要查询订单,必须要用户提供userId或者订单号,只能根据具体的用户Id或者订单号去查询相应的订单,绝对不允许查询或操作其他用户订单。
+- 如果用户想要修改或删除订单,必须要和用户确认用户ID和订单号,确保用户ID和订单号匹配且唯一后才允许修改或删除订单，一次只允许修改一个订单。
 """
     
     def _extract_tool_call(self, user_input: str) -> Optional[Dict]:
@@ -170,7 +175,7 @@ class BusinessAgent:
             
             if product_name:
                 import sys
-                print(f"[BusinessAgent] 关键词匹配提取参数: userId={user_id}, product={product_name}", file=sys.stderr, flush=True)
+                print(f"[OrderAgent] 关键词匹配提取参数: userId={user_id}, product={product_name}", file=sys.stderr, flush=True)
                 return {
                     "tool": "order-create-order-with-user",
                     "mcp_server": "order-mcp-server",
@@ -198,20 +203,20 @@ class BusinessAgent:
             工具执行结果
         """
         try:
-            print(f"[DEBUG] 调用工具: {tool_name}, 参数: {parameters}")
+            print(f"[DEBUG] 调用工具: {tool_name}, 参数: {parameters}", file=sys.stderr, flush=True)
             result = self.mcp_client.invoke_tool(mcp_server, tool_name, parameters)
-            print(f"[DEBUG] 工具调用结果: {result}")
+            print(f"[DEBUG] 工具调用结果: {result}", file=sys.stderr, flush=True)
             if result.get("status") == "success":
                 return str(result.get("result", ""))
             else:
                 error_msg = f"工具调用失败: {result.get('error', '未知错误')}"
-                print(f"[ERROR] {error_msg}")
+                print(f"[ERROR] {error_msg}", file=sys.stderr, flush=True)
                 return error_msg
         except Exception as e:
             error_msg = f"工具调用异常: {str(e)}"
-            print(f"[ERROR] {error_msg}")
+            print(f"[ERROR] {error_msg}", file=sys.stderr, flush=True)
             import traceback
-            traceback.print_exc()
+            traceback.print_exc(file=sys.stderr)
             return error_msg
     
     def _should_use_tool(self, user_input: str) -> Optional[Dict]:
@@ -231,10 +236,10 @@ class BusinessAgent:
             if 'parameters' in tool and 'properties' in tool['parameters']:
                 props = tool['parameters']['properties']
                 for param_name, param_info in props.items():
-                    tools_desc += f"  参数 {param_name}: {param_info.get('description', '')}\n"
+                    tools_desc += f"  参数 {param_name}: {param_info.get('description', '')} (类型: {param_info.get('type', 'string')}, 必需: {'required' in tool['parameters'] and param_name in tool['parameters']['required']})\n"
         
         # 使用 LLM 判断是否需要调用工具
-        prompt = f"""你是一个智能助手，需要判断用户请求是否需要调用工具，并提取参数。
+        prompt = f"""你是一个订单处理智能体，需要判断用户请求是否需要调用工具，并提取参数。
 
 可用工具列表:
 {tools_desc}
@@ -300,13 +305,13 @@ class BusinessAgent:
                                     tool_info["parameters"]["quantity"] = int(quantity)
                             
                             import sys
-                            print(f"[BusinessAgent] LLM 提取的工具调用: {tool_info}", file=sys.stderr, flush=True)
+                            print(f"[OrderAgent] LLM 提取的工具调用: {tool_info}", file=sys.stderr, flush=True)
                             return tool_info
                     except json.JSONDecodeError as e:
                         import sys
-                        print(f"[BusinessAgent] JSON 解析失败: {e}, 原始文本: {result_text[:200]}", file=sys.stderr, flush=True)
+                        print(f"[OrderAgent] JSON 解析失败: {e}, 原始文本: {result_text[:200]}", file=sys.stderr, flush=True)
         except Exception as e:
-            print(f"LLM 工具判断失败: {str(e)}")
+            print(f"[OrderAgent] LLM 工具判断失败: {str(e)}", file=sys.stderr, flush=True)
         
         return None
     
@@ -337,7 +342,7 @@ class BusinessAgent:
             if tool_call:
                 # 输出到 stderr，确保能看到（即使后台运行）
                 import sys
-                print(f"[BusinessAgent] 检测到工具调用: {tool_call}", file=sys.stderr, flush=True)
+                print(f"[OrderAgent] 检测到工具调用: {tool_call}", file=sys.stderr, flush=True)
                 # 调用工具
                 tool_result = self._invoke_tool(
                     tool_call["tool"],
@@ -347,12 +352,12 @@ class BusinessAgent:
                 
                 # 将工具结果添加到对话历史
                 import sys
-                print(f"[BusinessAgent] 工具调用结果: {tool_result[:200]}", file=sys.stderr, flush=True)
+                print(f"[OrderAgent] 工具调用结果: {tool_result[:200]}", file=sys.stderr, flush=True)
                 
                 # 检查工具调用是否成功
                 if "失败" in tool_result or "错误" in tool_result or "异常" in tool_result:
                     # 工具调用失败，直接返回错误信息
-                    print(f"[BusinessAgent] 工具调用失败，返回错误信息", file=sys.stderr, flush=True)
+                    print(f"[OrderAgent] 工具调用失败，返回错误信息", file=sys.stderr, flush=True)
                     self.history.append({
                         "role": "assistant",
                         "content": tool_result
@@ -395,19 +400,24 @@ class BusinessAgent:
                 
                 if response.status_code == 200:
                     ai_message = response.output.choices[0].message.content
+                    
+                    # 添加到历史记录
                     self.history.append({
                         "role": "assistant",
                         "content": ai_message
                     })
+                    
                     return ai_message
                 else:
                     error_msg = f"API 调用失败: {response.message}"
-                    print(f"错误: {error_msg}")
+                    print(f"[OrderAgent] 错误: {error_msg}", file=sys.stderr, flush=True)
                     return "抱歉，处理您的请求时出现了问题，请稍后再试。"
             
         except Exception as e:
             error_msg = f"处理请求时出现错误: {str(e)}"
-            print(f"错误: {error_msg}")
+            print(f"[OrderAgent] 错误: {error_msg}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             return "抱歉，处理您的请求时出现了问题，请稍后再试。"
     
     def clear_history(self):
@@ -456,8 +466,8 @@ class BusinessAgent:
         
         a2a_server.set_handler(handle_request)
         
-        print(f"{self.agent_name} A2A Server 启动在 http://{host}:{port}")
-        print(f"可用工具: {len(self.available_tools)} 个")
+        print(f"{self.agent_name} A2A Server 启动在 http://{host}:{port}", file=sys.stderr, flush=True)
+        print(f"可用工具: {len(self.available_tools)} 个", file=sys.stderr, flush=True)
         
         # 启动服务
         a2a_server.run(host=host, debug=debug)

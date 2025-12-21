@@ -112,7 +112,7 @@
 
 ```bash
 # 查看进程
-ps aux | grep -E "order_mcp_server|business_agent|chat.py"
+ps aux | grep -E "order_mcp_server|order_agent|chat.py"
 
 # 查看端口占用
 lsof -i :10002  # OrderMCPServer

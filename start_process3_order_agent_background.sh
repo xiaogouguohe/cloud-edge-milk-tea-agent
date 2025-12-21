@@ -40,7 +40,7 @@ echo ""
 
 # 启动 OrderAgent（后台运行）
 echo "启动 OrderAgent..."
-python3 business_agent/run_business_agent.py > logs/order_agent.log 2>&1 &
+python3 order_agent/run_order_agent.py > logs/order_agent.log 2>&1 &
 AGENT_PID=$!
 echo $AGENT_PID > logs/order_agent.pid
 

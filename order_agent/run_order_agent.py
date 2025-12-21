@@ -1,5 +1,5 @@
 """
-启动业务智能体服务
+启动订单智能体服务
 """
 import sys
 from pathlib import Path
@@ -8,23 +8,20 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from business_agent import BusinessAgent
+from order_agent import OrderAgent
 from service_discovery import ServiceDiscovery
 
 def main():
-    """启动业务智能体"""
+    """启动订单智能体"""
     print("=" * 60)
-    print("业务智能体服务")
+    print("订单智能体服务")
     print("=" * 60)
     print()
     
-    # 创建业务智能体（作为 order_agent）
-    agent = BusinessAgent(
-        agent_name="order_agent",
-        description="云边奶茶铺订单处理智能体，处理订单相关业务"
-    )
+    # 创建订单智能体
+    agent = OrderAgent()
     
-    # 注册到服务发现（作为 order_agent）
+    # 注册到服务发现
     sd = ServiceDiscovery(method="config")
     sd.register(
         "order_agent",
@@ -34,7 +31,7 @@ def main():
         description="云边奶茶铺订单处理智能体"
     )
     
-    print(f"业务智能体已注册到服务发现")
+    print(f"订单智能体已注册到服务发现")
     print(f"可用工具: {len(agent.get_available_tools())} 个")
     for tool in agent.get_available_tools():
         print(f"  - {tool['name']}: {tool['description']}")
