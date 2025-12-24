@@ -14,23 +14,66 @@ from rag.vector_store import InMemoryVectorStore
 from rag.text_splitter import RecursiveCharacterTextSplitter
 from rag.document_loader import DirectoryLoader, FileLoader
 
+# 尝试导入 Milvus Lite 向量存储（无需 Docker）
+try:
+    from rag.milvus_lite_vector_store import MilvusLiteVectorStore, MILVUS_LITE_AVAILABLE
+except ImportError:
+    MILVUS_LITE_AVAILABLE = False
+
 
 class RAGService:
     """RAG 服务 - 提供检索增强生成功能"""
     
-    def __init__(self, knowledge_base_dir: str = None, embedding_model: str = "text-embedding-v2"):
+    def __init__(
+        self,
+        knowledge_base_dir: str = None,
+        embedding_model: str = "text-embedding-v2",
+        use_milvus: bool = False,
+        milvus_collection_name: str = "rag_knowledge_base",
+        milvus_db_path: str = None,
+    ):
         """
         初始化 RAG 服务
         
         Args:
             knowledge_base_dir: 知识库目录路径，如果为 None 则使用默认路径
             embedding_model: Embedding 模型名称
+            use_milvus: 是否使用 Milvus Lite 向量数据库（默认 False，使用内存存储）
+            milvus_collection_name: Milvus 集合名称
+            milvus_db_path: Milvus Lite 数据库路径（None 则使用默认路径：data/milvus_lite.db）
         """
         # 初始化 embeddings
         self.embeddings = DashScopeEmbeddings(model=embedding_model)
         
         # 初始化向量存储
-        self.vector_store = InMemoryVectorStore(embeddings=self.embeddings)
+        self.use_milvus = False
+        if use_milvus:
+            if not MILVUS_LITE_AVAILABLE:
+                print("[RAGService] 警告: pymilvus 未安装，使用内存存储", file=sys.stderr, flush=True)
+                print("[RAGService] 提示: 安装 pymilvus 以使用 Milvus Lite: pip install pymilvus", file=sys.stderr, flush=True)
+                self.vector_store = InMemoryVectorStore(embeddings=self.embeddings)
+            else:
+                try:
+                    # 获取向量维度（通过生成测试向量）
+                    test_vector = self.embeddings.embed_query("test")
+                    dimension = len(test_vector)
+                    
+                    self.vector_store = MilvusLiteVectorStore(
+                        embeddings=self.embeddings,
+                        collection_name=milvus_collection_name,
+                        db_path=milvus_db_path,
+                        dimension=dimension,
+                    )
+                    self.use_milvus = True
+                    print("[RAGService] ✅ 使用 Milvus Lite（无需 Docker，本地数据库持久化）", file=sys.stderr, flush=True)
+                except Exception as e:
+                    print(f"[RAGService] ⚠️  Milvus Lite 初始化失败，回退到内存存储: {str(e)}", file=sys.stderr, flush=True)
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+                    self.vector_store = InMemoryVectorStore(embeddings=self.embeddings)
+        else:
+            self.vector_store = InMemoryVectorStore(embeddings=self.embeddings)
+            print("[RAGService] 使用内存向量存储（重启后数据会丢失）", file=sys.stderr, flush=True)
         
         # 初始化文本分割器
         self.text_splitter = RecursiveCharacterTextSplitter(
