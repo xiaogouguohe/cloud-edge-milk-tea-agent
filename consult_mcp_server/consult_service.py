@@ -40,28 +40,14 @@ class ConsultService:
         """初始化咨询服务"""
         self.db = db_manager
         
-        # 初始化 Dify 知识库服务（优先）
-        try:
-            from .dify_service import DifyService
-            self.dify_service = DifyService()
-            self.dify_available = self.dify_service.available
-            if self.dify_available:
-                print("[ConsultService] Dify 知识库服务已启用", file=sys.stderr, flush=True)
-            else:
-                print("[ConsultService] Dify 服务不可用（未设置 DIFY_API_URL 或 DIFY_API_KEY）", file=sys.stderr, flush=True)
-        except Exception as e:
-            print(f"[ConsultService] Dify 服务初始化失败: {str(e)}", file=sys.stderr, flush=True)
-            self.dify_service = None
-            self.dify_available = False
-        
-        # 初始化本地 RAG 服务（备选，不依赖 LangChain）
+        # 初始化本地 RAG 服务（使用 DashScope Embeddings，不依赖 LangChain）
         try:
             from rag.rag_service import RAGService
             self.rag_service = RAGService()
             # 加载知识库
             self.rag_service.load_knowledge_base()
             self.rag_available = True
-            print("[ConsultService] 本地 RAG 服务已启用（作为备选）", file=sys.stderr, flush=True)
+            print("[ConsultService] 本地 RAG 服务已启用", file=sys.stderr, flush=True)
         except Exception as e:
             print(f"[ConsultService] 本地 RAG 服务初始化失败: {str(e)}", file=sys.stderr, flush=True)
             import traceback
@@ -72,7 +58,7 @@ class ConsultService:
     def search_knowledge(self, query: str) -> str:
         """
         根据查询内容检索知识库
-        优先级：Dify 知识库 > DashScope RAG > 数据库查询
+        优先级：DashScope RAG > 数据库查询
         
         Args:
             query: 查询内容
@@ -80,19 +66,7 @@ class ConsultService:
         Returns:
             检索结果
         """
-        # 优先级 1: 使用 Dify 知识库（如果可用）
-        if self.dify_available and self.dify_service:
-            try:
-                result = self.dify_service.search(query)
-                # 如果 Dify 返回有效结果（不是错误信息），直接返回
-                if result and "未找到相关资料" not in result and "失败" not in result and "异常" not in result and "网络错误" not in result:
-                    return result
-                # 如果 Dify 未找到结果，尝试下一个方案
-                print(f"[ConsultService] Dify 未找到结果，尝试其他方案", file=sys.stderr, flush=True)
-            except Exception as e:
-                print(f"[ConsultService] Dify 检索失败，尝试其他方案: {str(e)}", file=sys.stderr, flush=True)
-        
-        # 优先级 2: 使用 DashScope RAG（如果可用）
+        # 优先级 1: 使用 DashScope RAG（如果可用）
         if self.rag_available and self.rag_service:
             try:
                 result = self.rag_service.search(query)
@@ -100,11 +74,11 @@ class ConsultService:
                 if result and "未找到相关资料" not in result and "失败" not in result and "异常" not in result:
                     return result
                 # 如果 RAG 未找到结果，回退到数据库查询
-                print(f"[ConsultService] DashScope RAG 未找到结果，回退到数据库查询", file=sys.stderr, flush=True)
+                print(f"[ConsultService] RAG 未找到结果，回退到数据库查询", file=sys.stderr, flush=True)
             except Exception as e:
-                print(f"[ConsultService] DashScope RAG 检索失败，回退到数据库查询: {str(e)}", file=sys.stderr, flush=True)
+                print(f"[ConsultService] RAG 检索失败，回退到数据库查询: {str(e)}", file=sys.stderr, flush=True)
         
-        # 优先级 3: 回退到数据库查询
+        # 优先级 2: 回退到数据库查询
         return self._search_from_database(query)
     
     def _search_from_database(self, query: str) -> str:

@@ -114,11 +114,10 @@ python3 test_rag.py
 
 ## 集成到 ConsultService
 
-RAG 服务已集成到 `consult_mcp_server/consult_service.py` 中，作为 Dify 知识库的备选方案：
+RAG 服务已集成到 `consult_mcp_server/consult_service.py` 中：
 
-1. **优先级 1**：Dify 知识库（如果配置了）
-2. **优先级 2**：本地 RAG 服务（本模块）
-3. **优先级 3**：数据库查询（回退方案）
+1. **优先级 1**：本地 RAG 服务（本模块，使用 DashScope Embeddings）
+2. **优先级 2**：数据库查询（回退方案）
 
 ## 注意事项
 
