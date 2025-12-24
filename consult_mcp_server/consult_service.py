@@ -54,17 +54,18 @@ class ConsultService:
             self.dify_service = None
             self.dify_available = False
         
-        # 初始化 DashScope RAG 服务（备选）
+        # 初始化本地 RAG 服务（备选，不依赖 LangChain）
         try:
-            from .rag_service import RAGService
+            from rag.rag_service import RAGService
             self.rag_service = RAGService()
-            self.rag_available = self.rag_service.available
-            if self.rag_available:
-                print("[ConsultService] DashScope RAG 服务已启用（作为备选）", file=sys.stderr, flush=True)
-            else:
-                print("[ConsultService] DashScope RAG 服务不可用（未设置 DASHSCOPE_INDEX_ID）", file=sys.stderr, flush=True)
+            # 加载知识库
+            self.rag_service.load_knowledge_base()
+            self.rag_available = True
+            print("[ConsultService] 本地 RAG 服务已启用（作为备选）", file=sys.stderr, flush=True)
         except Exception as e:
-            print(f"[ConsultService] DashScope RAG 服务初始化失败: {str(e)}", file=sys.stderr, flush=True)
+            print(f"[ConsultService] 本地 RAG 服务初始化失败: {str(e)}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             self.rag_service = None
             self.rag_available = False
     
