@@ -21,6 +21,7 @@ DASHSCOPE_RERANK_MIN_SCORE = float(os.getenv("DASHSCOPE_RERANK_MIN_SCORE", "0.5"
 DIFY_API_URL = os.getenv("DIFY_API_URL", "")
 DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
 DIFY_DATASET_ID = os.getenv("DIFY_DATASET_ID", "")  # 知识库/数据集 ID（可选）
+DIFY_EMBEDDING_MODEL = os.getenv("DIFY_EMBEDDING_MODEL", "")  # Embedding 模型（可选，用于解决 "Default model not found" 错误）
 
 # 验证必要的配置
 if not DASHSCOPE_API_KEY:

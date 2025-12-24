@@ -23,6 +23,7 @@ class DifyService:
         self.api_url = os.getenv("DIFY_API_URL", "").rstrip('/')  # 移除末尾的斜杠
         self.api_key = os.getenv("DIFY_API_KEY", "")
         self.dataset_id = os.getenv("DIFY_DATASET_ID", "")  # 知识库/数据集 ID
+        self.embedding_model = os.getenv("DIFY_EMBEDDING_MODEL", "")  # Embedding 模型
         
         if not self.api_url or not self.api_key:
             print("[DifyService] 警告: DIFY_API_URL 或 DIFY_API_KEY 未设置，Dify 服务将不可用", file=sys.stderr, flush=True)
@@ -52,17 +53,19 @@ class DifyService:
             print(f"[DifyService] 检索 Dify 知识库，查询: {query}", file=sys.stderr, flush=True)
             
             # Dify API 端点（根据 Dify 版本可能不同）
-            # 方式 1: 使用数据集检索 API
-            if self.dataset_id:
-                url = f"{self.api_url}/v1/datasets/{self.dataset_id}/retrieve"
-            else:
-                # 方式 2: 使用通用检索 API（如果支持）
-                url = f"{self.api_url}/v1/retrieval"
+            # 尝试多种 API 格式以兼容不同版本
             
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
+            
+            # Dify API 端点
+            # 根据测试，/v1/datasets/{id}/retrieve 是存在的端点
+            if self.dataset_id:
+                url = f"{self.api_url}/v1/datasets/{self.dataset_id}/retrieve"
+            else:
+                url = f"{self.api_url}/v1/retrieval"
             
             # 构建请求数据
             payload = {
@@ -71,9 +74,14 @@ class DifyService:
                 "score_threshold": score_threshold
             }
             
-            # 如果有 dataset_id，添加到 payload
-            if self.dataset_id and "datasets" not in url:
-                payload["dataset_id"] = self.dataset_id
+            # 如果指定了 embedding 模型，添加到请求中
+            # 这可以解决 "Default model not found for text-embedding" 错误
+            if self.embedding_model:
+                payload["embedding_model"] = self.embedding_model
+                print(f"[DifyService] 使用指定的 embedding 模型: {self.embedding_model}", file=sys.stderr, flush=True)
+            
+            # 发送请求
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
             
             # 发送请求
             response = requests.post(url, json=payload, headers=headers, timeout=30)
