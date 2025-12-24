@@ -68,7 +68,7 @@ class SupervisorAgent:
             "consult_agent": {
                 "name": "咨询智能体",
                 "description": "处理产品咨询、活动信息和冲泡指导",
-                "implemented": False
+                "implemented": True  # 已实现，可以通过 A2A 协议调用
             },
             "order_agent": {
                 "name": "订单智能体",

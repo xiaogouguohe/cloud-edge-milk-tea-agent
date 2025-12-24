@@ -17,6 +17,12 @@
     "url": "http://localhost:10005",
     "description": "云边奶茶铺咨询智能体"
   },
+  "consult-mcp-server": {
+    "host": "localhost",
+    "port": 10003,
+    "url": "http://localhost:10003",
+    "description": "咨询管理 MCP Server"
+  },
   "feedback_agent": {
     "host": "localhost",
     "port": 10007,
