@@ -105,3 +105,4 @@ class FileLoader:
         except Exception as e:
             print(f"[FileLoader] 加载文件失败 {self.file_path}: {str(e)}", file=sys.stderr, flush=True)
             return []
+

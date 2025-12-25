@@ -74,7 +74,7 @@ class MilvusLiteVectorStore:
                 collection_name=self.collection_name,
                 dimension=dimension,
                 metric_type="COSINE",  # 使用余弦相似度
-                consistency_level="Strong",
+                auto_id=True,  # 自动生成 ID，这样插入数据时不需要提供 id 字段
             )
             print(f"[MilvusLiteVectorStore] 集合创建成功", file=sys.stderr, flush=True)
     

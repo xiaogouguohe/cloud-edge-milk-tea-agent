@@ -99,3 +99,4 @@ rag_service = RAGService(use_milvus=True)  # 默认就是 lite 模式
 - ✅ **Milvus Standalone**：需要 Docker，适合大规模场景
 
 **对于大多数场景，推荐使用 Milvus Lite，就像使用 SQLite 一样简单！**
+

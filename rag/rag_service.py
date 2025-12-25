@@ -54,9 +54,13 @@ class RAGService:
                 self.vector_store = InMemoryVectorStore(embeddings=self.embeddings)
             else:
                 try:
-                    # 获取向量维度（通过生成测试向量）
-                    test_vector = self.embeddings.embed_query("test")
-                    dimension = len(test_vector)
+                    # 使用默认向量维度（text-embedding-v2 是 1536）
+                    # 避免在初始化时调用 API，防止网络问题导致阻塞
+                    dimension = 1536  # text-embedding-v2 的默认维度
+                    
+                    # 如果使用其他模型，可以根据模型名称设置不同的维度
+                    if embedding_model != "text-embedding-v2":
+                        print(f"[RAGService] 警告: 使用默认维度 {dimension}，如果模型维度不同，请手动指定", file=sys.stderr, flush=True)
                     
                     self.vector_store = MilvusLiteVectorStore(
                         embeddings=self.embeddings,

@@ -140,3 +140,4 @@ class RecursiveCharacterTextSplitter:
                 all_chunks.append(chunk_doc)
         
         return all_chunks
+

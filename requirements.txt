@@ -12,3 +12,7 @@ redis>=5.0.0  # Redis 支持（用于服务发现或缓存）
 
 # RAG 支持（可选，但推荐）
 numpy>=1.24.0  # 用于向量相似度计算（提升性能）
+
+# Milvus Lite 向量数据库支持（可选，用于持久化存储向量）
+# 注意：必须使用 pymilvus[milvus_lite] 才能使用 Milvus Lite 功能
+pymilvus[milvus_lite]>=2.3.0  # Milvus 向量数据库 Python SDK（支持 Milvus Lite，无需 Docker）

@@ -127,3 +127,4 @@ python3 test_milvus_lite.py
 - ✅ 完全免费
 
 **使用方式**：`RAGService(use_milvus=True)` 即可！
+

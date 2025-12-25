@@ -89,3 +89,4 @@ def test_milvus_lite_rag():
 
 if __name__ == "__main__":
     test_milvus_lite_rag()
+

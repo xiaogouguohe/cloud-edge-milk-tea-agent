@@ -92,3 +92,4 @@ class DashScopeEmbeddings:
             return self.embed_query(texts)
         else:
             return self.embed_documents(texts)
+
