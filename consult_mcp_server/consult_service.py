@@ -43,7 +43,7 @@ class ConsultService:
         # 初始化本地 RAG 服务（使用 DashScope Embeddings，不依赖 LangChain）
         try:
             from rag.rag_service import RAGService
-            self.rag_service = RAGService()
+            self.rag_service = RAGService(use_milvus=True)  # 使用 Milvus Lite 向量数据库
             # 加载知识库
             self.rag_service.load_knowledge_base()
             self.rag_available = True

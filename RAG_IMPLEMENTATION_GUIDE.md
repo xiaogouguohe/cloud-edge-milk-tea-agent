@@ -177,7 +177,7 @@ class ConsultService:
         self.db = db_manager
         # 初始化 RAG 服务
         try:
-            self.rag_service = RAGService()
+            self.rag_service = RAGService(use_milvus=True)
             self.rag_available = True
         except Exception as e:
             print(f"[ConsultService] RAG 服务不可用: {str(e)}")

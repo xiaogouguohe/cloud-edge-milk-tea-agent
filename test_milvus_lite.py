@@ -27,8 +27,8 @@ def test_milvus_lite_rag():
         )
         
         if not rag_service.use_milvus:
-            print("⚠️  Milvus Lite 不可用，已回退到内存存储")
-            print("   请安装 pymilvus: pip install pymilvus")
+            print("❌ Milvus Lite 初始化失败")
+            print("   请安装 pymilvus: pip install pymilvus[milvus_lite]")
             return False
         
         print(f"✅ 使用 Milvus Lite")

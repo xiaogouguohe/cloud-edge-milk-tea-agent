@@ -1,0 +1,171 @@
+================================================================================
+OrderAgent 到 OrderMCPServer 创建订单的完整请求和响应报文
+场景：用户下单
+================================================================================
+
+【注意】
+工具名称是: order-create-order-with-user
+URL 路径: /mcp/tools/order-create-order-with-user/invoke
+
+【HTTP 请求】
+
+POST http://localhost:10002/mcp/tools/order-create-order-with-user/invoke HTTP/1.1
+Host: localhost:10002
+Content-Type: application/json
+Content-Length: 156
+
+{
+    "parameters": {
+        "userId": 789012,
+        "productName": "云边茉莉",
+        "sweetness": "少糖",
+        "iceLevel": "正常冰",
+        "quantity": 1,
+        "remark": "不要珍珠"
+    }
+}
+
+================================================================================
+
+【使用 curl 命令】
+
+curl -X POST http://localhost:10002/mcp/tools/order-create-order-with-user/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parameters": {
+        "userId": 789012,
+        "productName": "云边茉莉",
+        "sweetness": "少糖",
+        "iceLevel": "正常冰",
+        "quantity": 1,
+        "remark": "不要珍珠"
+    }
+  }'
+
+================================================================================
+
+【HTTP 响应（成功）】
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 512
+
+{
+    "status": "success",
+    "result": "订单创建成功！\n\n订单详情：\n- 订单ID: ORDER_1693654321000\n- 用户ID: 789012\n- 产品: 云边茉莉\n- 甜度: 少糖\n- 冰量: 正常冰\n- 数量: 1\n- 单价: ¥18.00\n- 总价: ¥18.00\n- 备注: 不要珍珠\n- 创建时间: 2025-01-15 10:30:00\n\n感谢您的订购，订单已成功创建！"
+}
+
+================================================================================
+
+【HTTP 响应（错误 - 产品不存在）】
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 89
+
+{
+    "status": "error",
+    "error": "创建订单失败: 产品不存在: 不存在的产品"
+}
+
+================================================================================
+
+【HTTP 响应（错误 - 库存不足）】
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 95
+
+{
+    "status": "error",
+    "error": "创建订单失败: 库存不足，当前库存: 0，需要: 1"
+}
+
+================================================================================
+
+【HTTP 响应（错误 - 参数验证失败）】
+
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+Content-Length: 120
+
+{
+    "status": "error",
+    "error": "创建订单失败: 参数验证失败: userId 必须是正整数"
+}
+
+================================================================================
+
+【响应格式说明】
+
+1. 成功响应 (status: "success"):
+   - status: "success"
+   - result: 格式化的订单信息字符串（包含订单ID、产品信息、价格等）
+
+2. 错误响应 (status: "error"):
+   - status: "error"
+   - error: 错误信息字符串
+
+3. HTTP 状态码:
+   - 成功: 200 OK
+   - 工具未找到: 404 Not Found
+   - 服务器错误: 500 Internal Server Error
+
+================================================================================
+
+【成功响应的 result 字段详细内容】
+
+根据代码（order_mcp_server.py 第 280-287 行），实际返回的格式是：
+
+订单创建成功！
+订单ID: ORDER_1693654321000
+用户ID: 789012
+产品: 云边茉莉
+甜度: 少糖
+冰量: 正常冰
+数量: 1
+总价: ¥18.00
+
+================================================================================
+
+【完整的响应报文（格式化）】
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 256
+
+{
+    "status": "success",
+    "result": "订单创建成功！\n订单ID: ORDER_1693654321000\n用户ID: 789012\n产品: 云边茉莉\n甜度: 少糖\n冰量: 正常冰\n数量: 1\n总价: ¥18.00"
+}
+
+================================================================================
+
+【其他错误场景响应示例】
+
+1. 产品不存在:
+{
+    "status": "error",
+    "error": "创建订单失败: 产品不存在: 不存在的产品"
+}
+
+2. 库存不足:
+{
+    "status": "error",
+    "error": "创建订单失败: 库存不足，当前库存: 0，需要: 1"
+}
+
+3. 参数缺失:
+{
+    "status": "error",
+    "error": "创建订单失败: 缺少必需参数: productName"
+}
+
+4. 参数类型错误:
+{
+    "status": "error",
+    "error": "创建订单失败: userId 必须是整数类型"
+}
+
+================================================================================
+

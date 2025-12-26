@@ -1,0 +1,102 @@
+================================================================================
+SupervisorAgent 到 OrderAgent 的完整请求报文示例
+场景：用户查询历史订单
+================================================================================
+
+【HTTP 请求】
+
+POST http://localhost:10006/a2a/invoke HTTP/1.1
+Host: localhost:10006
+Content-Type: application/json
+Content-Length: 123
+
+{
+    "input": "我想查询我的历史订单",
+    "chat_id": "chat_123456",
+    "user_id": "user_789012"
+}
+
+================================================================================
+
+【使用 curl 命令】
+
+curl -X POST http://localhost:10006/a2a/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "我想查询我的历史订单",
+    "chat_id": "chat_123456",
+    "user_id": "user_789012"
+  }'
+
+================================================================================
+
+【使用 Python requests】
+
+import requests
+
+url = "http://localhost:10006/a2a/invoke"
+headers = {
+    "Content-Type": "application/json"
+}
+data = {
+    "input": "我想查询我的历史订单",
+    "chat_id": "chat_123456",
+    "user_id": "user_789012"
+}
+
+response = requests.post(url, json=data, headers=headers)
+print(response.json())
+
+================================================================================
+
+【HTTP 响应（成功）】
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 456
+
+{
+    "output": "您有以下历史订单：\n\n1. 订单号: ORD001\n   产品: 云边茉莉\n   数量: 2\n   价格: ¥36.00\n   状态: 已完成\n   下单时间: 2025-01-15 10:30:00\n\n2. 订单号: ORD002\n   产品: 桂花云露\n   数量: 1\n   价格: ¥22.00\n   状态: 已完成\n   下单时间: 2025-01-14 15:20:00",
+    "status": "success"
+}
+
+================================================================================
+
+【HTTP 响应（错误）】
+
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+Content-Length: 89
+
+{
+    "error": "工具调用失败: 无法连接到数据库",
+    "status": "error"
+}
+
+================================================================================
+
+【其他场景示例】
+
+1. 用户下单：
+{
+    "input": "我要下单，一杯云边茉莉，少糖，正常冰",
+    "chat_id": "chat_123456",
+    "user_id": "user_789012"
+}
+
+2. 查询特定订单：
+{
+    "input": "查询订单号 ORD001 的详情",
+    "chat_id": "chat_123456",
+    "user_id": "user_789012"
+}
+
+3. 取消订单：
+{
+    "input": "取消订单 ORD001",
+    "chat_id": "chat_123456",
+    "user_id": "user_789012"
+}
+
+================================================================================
+

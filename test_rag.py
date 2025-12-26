@@ -20,7 +20,7 @@ def test_rag():
     
     # 初始化 RAG 服务
     print("初始化 RAG 服务...")
-    rag_service = RAGService()
+    rag_service = RAGService(use_milvus=True)
     
     # 加载知识库
     print("加载知识库...")

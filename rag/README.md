@@ -5,7 +5,7 @@
 ## 功能特性
 
 - ✅ 直接调用 DashScope API 生成 embeddings（不依赖 LangChain）
-- ✅ 内存向量存储（支持 numpy 加速）
+- ✅ Milvus Lite 向量数据库（本地持久化存储）
 - ✅ 文档分块和加载
 - ✅ 相似度搜索
 - ✅ 完整的 RAG 服务封装
@@ -14,12 +14,12 @@
 
 ```
 rag/
-├── __init__.py              # 模块导出
-├── dashscope_embeddings.py  # DashScope Embeddings（直接调用 API）
-├── vector_store.py          # 内存向量存储
-├── text_splitter.py         # 文本分割器
-├── document_loader.py       # 文档加载器
-└── rag_service.py           # RAG 服务（完整封装）
+├── __init__.py                    # 模块导出
+├── dashscope_embeddings.py        # DashScope Embeddings（直接调用 API）
+├── milvus_lite_vector_store.py    # Milvus Lite 向量存储
+├── text_splitter.py               # 文本分割器
+├── document_loader.py             # 文档加载器
+└── rag_service.py                 # RAG 服务（完整封装）
 ```
 
 ## 使用方法
@@ -29,8 +29,8 @@ rag/
 ```python
 from rag.rag_service import RAGService
 
-# 初始化 RAG 服务
-rag_service = RAGService()
+# 初始化 RAG 服务（使用 Milvus Lite）
+rag_service = RAGService(use_milvus=True)
 
 # 加载知识库（从 knowledge_base 目录）
 rag_service.load_knowledge_base()
@@ -63,13 +63,17 @@ rag_service.add_documents(documents)
 
 ```python
 from rag.dashscope_embeddings import DashScopeEmbeddings
-from rag.vector_store import InMemoryVectorStore
+from rag.milvus_lite_vector_store import MilvusLiteVectorStore
 from rag.text_splitter import RecursiveCharacterTextSplitter
 from rag.document_loader import DirectoryLoader
 
 # 初始化组件
 embeddings = DashScopeEmbeddings(model="text-embedding-v2")
-vector_store = InMemoryVectorStore(embeddings=embeddings)
+vector_store = MilvusLiteVectorStore(
+    embeddings=embeddings,
+    collection_name="rag_knowledge_base",
+    dimension=1536
+)
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 loader = DirectoryLoader(directory="./knowledge_base", glob_pattern="**/*.md")
 
@@ -88,21 +92,22 @@ results = vector_store.similarity_search("查询内容", k=5)
 
 | 特性 | 本实现 | LangChain |
 |------|-------|-----------|
-| 依赖 | 仅 dashscope | langchain + langchain-community |
+| 依赖 | dashscope + pymilvus | langchain + langchain-community |
 | Embeddings | 直接调用 DashScope API | DashScopeEmbeddings 封装 |
-| 向量存储 | 纯 Python + numpy | InMemoryVectorStore |
+| 向量存储 | Milvus Lite（本地持久化） | 多种向量数据库支持 |
 | 文本分割 | 自定义实现 | RecursiveCharacterTextSplitter |
 | 文档加载 | 自定义实现 | 多种 Loader |
 
 ## 性能优化
 
-- **numpy 加速**：如果安装了 numpy，向量相似度计算会使用 numpy 加速
+- **Milvus Lite**：本地向量数据库，毫秒级查询速度
 - **批量处理**：支持批量生成 embeddings，减少 API 调用次数
+- **持久化存储**：数据保存在本地文件，重启后不丢失
 
 ## 依赖要求
 
 - `dashscope>=1.17.0`：用于调用 DashScope API
-- `numpy>=1.24.0`（可选但推荐）：用于向量计算加速
+- `pymilvus[milvus_lite]>=2.3.0`：用于 Milvus Lite 向量数据库
 
 ## 测试
 

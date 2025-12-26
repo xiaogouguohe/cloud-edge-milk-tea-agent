@@ -1,0 +1,157 @@
+================================================================================
+OrderAgent 到 OrderMCPServer 的完整请求报文示例
+场景：用户查询历史订单
+================================================================================
+
+【HTTP 请求】
+
+POST http://localhost:10002/mcp/tools/order-get-orders-by-user/invoke HTTP/1.1
+Host: localhost:10002
+Content-Type: application/json
+Content-Length: 45
+
+{
+    "parameters": {
+        "userId": 789012
+    }
+}
+
+================================================================================
+
+【使用 curl 命令】
+
+curl -X POST http://localhost:10002/mcp/tools/order-get-orders-by-user/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parameters": {
+        "userId": 789012
+    }
+  }'
+
+================================================================================
+
+【使用 Python requests】
+
+import requests
+
+url = "http://localhost:10002/mcp/tools/order-get-orders-by-user/invoke"
+headers = {
+    "Content-Type": "application/json"
+}
+data = {
+    "parameters": {
+        "userId": 789012
+    }
+}
+
+response = requests.post(url, json=data, headers=headers)
+print(response.json())
+
+================================================================================
+
+【HTTP 响应（成功）】
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 512
+
+{
+    "status": "success",
+    "result": "您有以下订单：\n\n1. 订单ID: ORDER_1693654321000\n   产品: 云边茉莉\n   甜度: 标准糖\n   冰量: 正常冰\n   数量: 2\n   价格: ¥36.00\n   创建时间: 2025-01-15 10:30:00\n   状态: 已完成\n\n2. 订单ID: ORDER_1693567921000\n   产品: 桂花云露\n   甜度: 少糖\n   冰量: 去冰\n   数量: 1\n   价格: ¥22.00\n   创建时间: 2025-01-14 15:20:00\n   状态: 已完成"
+}
+
+================================================================================
+
+【HTTP 响应（错误）】
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 89
+
+{
+    "status": "error",
+    "error": "查询订单失败: 用户ID无效"
+}
+
+================================================================================
+
+【其他工具调用示例】
+
+1. 根据订单ID查询订单 (order-get-order):
+POST http://localhost:10002/mcp/tools/order-get-order/invoke
+{
+    "parameters": {
+        "orderId": "ORDER_1693654321000"
+    }
+}
+
+2. 创建订单 (order-create-order-with-user):
+POST http://localhost:10002/mcp/tools/order-create-order-with-user/invoke
+{
+    "parameters": {
+        "userId": 789012,
+        "productName": "云边茉莉",
+        "sweetness": "少糖",
+        "iceLevel": "正常冰",
+        "quantity": 1,
+        "remark": "不要珍珠"
+    }
+}
+
+3. 根据用户ID和订单ID查询订单 (order-get-order-by-user):
+POST http://localhost:10002/mcp/tools/order-get-order-by-user/invoke
+{
+    "parameters": {
+        "userId": 789012,
+        "orderId": "ORDER_1693654321000"
+    }
+}
+
+================================================================================
+
+【完整调用链路】
+
+用户: "我想查询我的历史订单"
+  ↓
+SupervisorAgent 路由到 OrderAgent
+  ↓
+OrderAgent 分析输入，判断需要调用 order-get-orders-by-user 工具
+  ↓
+OrderAgent 提取 user_id (从 A2A 请求中获取: "user_789012")
+  ↓
+OrderAgent 调用 MCPClient.invoke_tool("order-mcp-server", "order-get-orders-by-user", {"userId": 789012})
+  ↓
+HTTP POST http://localhost:10002/mcp/tools/order-get-orders-by-user/invoke
+  Request Body: {"parameters": {"userId": 789012}}
+  ↓
+OrderMCPServer 接收请求，调用 _get_orders_by_user(789012)
+  ↓
+OrderService.get_orders_by_user(789012) 查询数据库
+  ↓
+返回订单列表（格式化的字符串）
+  ↓
+OrderAgent 接收结果，使用 LLM 生成友好回复
+  ↓
+返回给 SupervisorAgent
+
+================================================================================
+
+【关键点说明】
+
+1. MCP 协议请求格式：
+   - URL: http://{host}:{port}/mcp/tools/{tool_name}/invoke
+   - 请求体: {"parameters": {...}}
+   - parameters 中包含工具所需的所有参数
+
+2. user_id 转换：
+   - A2A 请求中的 user_id 是字符串: "user_789012"
+   - OrderAgent 需要转换为整数: 789012
+   - 或者从字符串中提取数字部分
+
+3. 工具名称：
+   - order-get-orders-by-user: 获取用户的所有订单
+   - order-get-order: 根据订单ID查询订单
+   - order-create-order-with-user: 创建订单
+
+================================================================================
+
