@@ -28,5 +28,11 @@
     "port": 10007,
     "url": "http://localhost:10007",
     "description": "云边奶茶铺反馈智能体"
+  },
+  "feedback-mcp-server": {
+    "host": "localhost",
+    "port": 10004,
+    "url": "http://localhost:10004",
+    "description": "反馈管理 MCP Server"
   }
 }

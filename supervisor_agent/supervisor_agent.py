@@ -78,7 +78,7 @@ class SupervisorAgent:
             "feedback_agent": {
                 "name": "反馈智能体",
                 "description": "处理用户反馈、投诉和差评",
-                "implemented": False
+                "implemented": True  # 已实现，可以通过 A2A 协议调用
             }
         }
         
