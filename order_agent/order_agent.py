@@ -141,11 +141,10 @@ class OrderAgent:
             
             # 提取产品名称（简单匹配）
             products = ["云边茉莉", "桂花云露", "云雾观音", "珍珠奶茶", "红豆奶茶"]
-            product_name = None
+            found_products = []
             for p in products:
                 if p in user_input:
-                    product_name = p
-                    break
+                    found_products.append(p)
             
             # 提取甜度
             sweetness_map = {
@@ -173,18 +172,24 @@ class OrderAgent:
             quantity_match = re.search(r'(\d+)\s*[杯份]', user_input)
             quantity = int(quantity_match.group(1)) if quantity_match else 1
             
-            if product_name:
+            # 统一使用 items 数组格式（支持单个或多个产品）
+            if len(found_products) > 0:
                 import sys
-                print(f"[OrderAgent] 关键词匹配提取参数: userId={user_id}, product={product_name}", file=sys.stderr, flush=True)
-                return {
-                    "tool": "order-create-order-with-user",
-                    "mcp_server": "order-mcp-server",
-                    "parameters": {
-                        "userId": user_id,
+                items = []
+                for product_name in found_products:
+                    items.append({
                         "productName": product_name,
                         "sweetness": sweetness,
                         "iceLevel": ice_level,
                         "quantity": quantity
+                    })
+                print(f"[OrderAgent] 关键词匹配提取订单: userId={user_id}, products={found_products}, items={len(items)}", file=sys.stderr, flush=True)
+                return {
+                    "tool": "order-create-order",
+                    "mcp_server": "order-mcp-server",
+                    "parameters": {
+                        "userId": user_id,
+                        "items": items
                     }
                 }
         
@@ -251,6 +256,7 @@ class OrderAgent:
 - 如果工具需要 userId 参数，必须使用整数类型: {self.user_id}
 - 从用户输入中提取产品名称、甜度、冰量、数量等信息
 - 如果用户输入中包含用户ID，使用用户输入中的ID；否则使用当前会话的用户ID: {self.user_id}
+- **创建订单统一使用 order-create-order 工具，支持单个或多个产品**
 
 请判断：
 1. 是否需要调用工具？如果需要，返回工具名称
@@ -258,9 +264,13 @@ class OrderAgent:
 
 请以 JSON 格式返回，格式如下：
 - 如果不需要工具: {{"use_tool": false}}
-- 如果需要工具: {{"use_tool": true, "tool_name": "工具名称", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "productName": "产品名称", "sweetness": "甜度", "iceLevel": "冰量", "quantity": 数量}}}}
+- 如果需要创建订单: {{"use_tool": true, "tool_name": "order-create-order", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "items": [{{"productName": "产品名称", "sweetness": "甜度", "iceLevel": "冰量", "quantity": 数量, "remark": "备注"}}], "remark": "订单整体备注"}}}}
+  - 如果用户只点一个产品，items 数组包含一个订单项
+  - 如果用户点多个产品，items 数组包含多个订单项
 
-注意：userId 和 quantity 必须是数字类型，不是字符串。
+注意：
+- userId 和 quantity 必须是数字类型，不是字符串
+- items 数组中的每个订单项都必须包含 productName, sweetness, iceLevel, quantity
 
 只返回 JSON，不要其他文字。"""
         
@@ -296,13 +306,23 @@ class OrderAgent:
                                     tool_info["parameters"]["userId"] = int(userId)
                                 elif not isinstance(userId, int):
                                     tool_info["parameters"]["userId"] = int(userId)
-                            # 确保 quantity 是整数类型
+                            # 确保 quantity 是整数类型（单产品订单）
                             if "quantity" in tool_info["parameters"]:
                                 quantity = tool_info["parameters"]["quantity"]
                                 if isinstance(quantity, str):
                                     tool_info["parameters"]["quantity"] = int(quantity)
                                 elif not isinstance(quantity, int):
                                     tool_info["parameters"]["quantity"] = int(quantity)
+                            
+                            # 确保 items 数组中的 quantity 是整数类型（多产品订单）
+                            if "items" in tool_info["parameters"] and isinstance(tool_info["parameters"]["items"], list):
+                                for item in tool_info["parameters"]["items"]:
+                                    if "quantity" in item:
+                                        quantity = item["quantity"]
+                                        if isinstance(quantity, str):
+                                            item["quantity"] = int(quantity)
+                                        elif not isinstance(quantity, int):
+                                            item["quantity"] = int(quantity)
                             
                             import sys
                             print(f"[OrderAgent] LLM 提取的工具调用: {tool_info}", file=sys.stderr, flush=True)

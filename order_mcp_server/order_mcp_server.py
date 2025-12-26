@@ -4,7 +4,7 @@
 """
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
@@ -98,10 +98,10 @@ class OrderMCPServer:
             handler=self._get_order_by_user
         )
         
-        # 3. 创建订单
+        # 3. 创建订单（支持单个或多个产品）
         self.mcp_server.register_tool_func(
-            name="order-create-order-with-user",
-            description="为用户创建新的奶茶订单。支持云边奶茶铺的所有产品，包括云边茉莉、桂花云露、云雾观音等经典产品。系统会自动检查库存并计算价格。",
+            name="order-create-order",
+            description="为用户创建奶茶订单，支持单个或多个产品。系统会自动检查库存并计算总价格。",
             parameters={
                 "type": "object",
                 "properties": {
@@ -109,31 +109,45 @@ class OrderMCPServer:
                         "type": "integer",
                         "description": "用户ID，必须为正整数"
                     },
-                    "productName": {
-                        "type": "string",
-                        "description": "产品名称，必须是云边奶茶铺的现有产品"
-                    },
-                    "sweetness": {
-                        "type": "string",
-                        "description": "甜度要求，可选值：标准糖、少糖、半糖、微糖、无糖",
-                        "enum": ["无糖", "微糖", "半糖", "少糖", "标准糖"]
-                    },
-                    "iceLevel": {
-                        "type": "string",
-                        "description": "冰量要求，可选值：正常冰、少冰、去冰、温、热",
-                        "enum": ["热", "温", "去冰", "少冰", "正常冰"]
-                    },
-                    "quantity": {
-                        "type": "integer",
-                        "description": "购买数量，必须为正整数，默认为1",
-                        "minimum": 1
+                    "items": {
+                        "type": "array",
+                        "description": "订单项列表，每个订单项包含产品名称、甜度、冰量、数量和备注",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "productName": {
+                                    "type": "string",
+                                    "description": "产品名称，必须是云边奶茶铺的现有产品"
+                                },
+                                "sweetness": {
+                                    "type": "string",
+                                    "description": "甜度要求，可选值：标准糖、少糖、半糖、微糖、无糖",
+                                    "enum": ["无糖", "微糖", "半糖", "少糖", "标准糖"]
+                                },
+                                "iceLevel": {
+                                    "type": "string",
+                                    "description": "冰量要求，可选值：正常冰、少冰、去冰、温、热",
+                                    "enum": ["热", "温", "去冰", "少冰", "正常冰"]
+                                },
+                                "quantity": {
+                                    "type": "integer",
+                                    "description": "购买数量，必须为正整数，默认为1",
+                                    "minimum": 1
+                                },
+                                "remark": {
+                                    "type": "string",
+                                    "description": "订单项备注，可选"
+                                }
+                            },
+                            "required": ["productName", "sweetness", "iceLevel", "quantity"]
+                        }
                     },
                     "remark": {
                         "type": "string",
-                        "description": "订单备注，可选"
+                        "description": "订单整体备注，可选"
                     }
                 },
-                "required": ["userId", "productName", "sweetness", "iceLevel", "quantity"]
+                "required": ["userId", "items"]
             },
             handler=self._create_order
         )
@@ -243,27 +257,18 @@ class OrderMCPServer:
         except Exception as e:
             return f"查询订单失败: {str(e)}"
     
-    def _create_order(self, userId: int, productName: str, sweetness: str, 
-                     iceLevel: str, quantity: int, remark: Optional[str] = None) -> str:
-        """工具：创建订单"""
+    def _create_order(self, userId: int, items: List[Dict], remark: Optional[str] = None) -> str:
+        """工具：创建订单（支持多产品）"""
         try:
             # 确保 userId 是整数类型
             if isinstance(userId, str):
                 userId = int(userId)
-            if isinstance(quantity, str):
-                quantity = int(quantity)
             
-            print(f"[OrderMCPServer] 创建订单 - userId: {userId} (type: {type(userId)}), product: {productName}, quantity: {quantity}")
-            
-            sweetness_num = self._convert_sweetness(sweetness)
-            ice_level_num = self._convert_ice_level(iceLevel)
+            print(f"[OrderMCPServer] 创建订单 - userId: {userId}, items: {len(items)} 项")
             
             order = self.order_service.create_order(
                 user_id=userId,
-                product_name=productName,
-                sweetness=sweetness_num,
-                ice_level=ice_level_num,
-                quantity=quantity,
+                items=items,
                 remark=remark
             )
             
@@ -277,14 +282,7 @@ class OrderMCPServer:
                 else:
                     print(f"[OrderMCPServer] ⚠️  数据库验证失败 - 订单未找到")
             
-            return f"""订单创建成功！
-订单ID: {order['order_id']}
-用户ID: {userId}
-产品: {productName}
-甜度: {sweetness}
-冰量: {iceLevel}
-数量: {quantity}
-总价: ¥{order['total_price']:.2f}"""
+            return self.order_service.format_order_response(order)
         except Exception as e:
             import traceback
             error_msg = f"创建订单失败: {str(e)}"

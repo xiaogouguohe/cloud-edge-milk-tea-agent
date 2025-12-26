@@ -128,25 +128,19 @@ class DatabaseManager:
                 )
             """)
         
-        # 创建订单表
+        # 创建订单表（主表，只存储订单基本信息）
         if self.db_type == "sqlite":
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     order_id VARCHAR(50) NOT NULL UNIQUE,
                     user_id BIGINT NOT NULL,
-                    product_id BIGINT NOT NULL,
-                    product_name VARCHAR(100) NOT NULL,
-                    sweetness TINYINT NOT NULL,
-                    ice_level TINYINT NOT NULL,
-                    quantity INT NOT NULL DEFAULT 1,
-                    unit_price DECIMAL(10,2) NOT NULL,
-                    total_price DECIMAL(10,2) NOT NULL,
+                    total_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+                    status VARCHAR(20) DEFAULT 'UNPAID',
                     remark TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id),
-                    FOREIGN KEY (product_id) REFERENCES products(id)
+                    FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             """)
         else:  # MySQL
@@ -155,17 +149,49 @@ class DatabaseManager:
                     id BIGINT AUTO_INCREMENT PRIMARY KEY,
                     order_id VARCHAR(50) NOT NULL UNIQUE,
                     user_id BIGINT NOT NULL,
+                    total_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+                    status VARCHAR(20) DEFAULT 'UNPAID',
+                    remark TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+        
+        # 创建订单项表（从表，存储订单中的每个产品）
+        if self.db_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS order_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id VARCHAR(50) NOT NULL,
                     product_id BIGINT NOT NULL,
                     product_name VARCHAR(100) NOT NULL,
                     sweetness TINYINT NOT NULL,
                     ice_level TINYINT NOT NULL,
                     quantity INT NOT NULL DEFAULT 1,
                     unit_price DECIMAL(10,2) NOT NULL,
-                    total_price DECIMAL(10,2) NOT NULL,
+                    item_price DECIMAL(10,2) NOT NULL,
                     remark TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
+                    FOREIGN KEY (product_id) REFERENCES products(id)
+                )
+            """)
+        else:  # MySQL
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS order_items (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    order_id VARCHAR(50) NOT NULL,
+                    product_id BIGINT NOT NULL,
+                    product_name VARCHAR(100) NOT NULL,
+                    sweetness TINYINT NOT NULL,
+                    ice_level TINYINT NOT NULL,
+                    quantity INT NOT NULL DEFAULT 1,
+                    unit_price DECIMAL(10,2) NOT NULL,
+                    item_price DECIMAL(10,2) NOT NULL,
+                    remark TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
                     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
                 )
             """)
@@ -201,9 +227,7 @@ class DatabaseManager:
             """)
         
         self.connection.commit()
-        
-        # 初始化产品数据
-        self._init_products()
+        # self._init_products()  # 注释掉，避免每次创建表都初始化产品
     
     def _init_products(self):
         """初始化产品数据"""

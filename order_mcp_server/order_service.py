@@ -85,47 +85,62 @@ class OrderService:
         """
         return self.order_dao.get_orders_by_user(user_id)
     
-    def create_order(self, user_id: int, product_name: str, 
-                    sweetness: int, ice_level: int, quantity: int,
-                    remark: Optional[str] = None) -> Dict:
+    def create_order(self, user_id: int, items: List[Dict], remark: Optional[str] = None) -> Dict:
         """
-        创建订单
+        创建订单（支持多产品）
         
         Args:
             user_id: 用户ID
-            product_name: 产品名称
-            sweetness: 甜度 (1-5)
-            ice_level: 冰量 (1-5)
-            quantity: 数量
-            remark: 备注
+            items: 订单项列表，每个项包含 productName, sweetness, iceLevel, quantity, remark
+            remark: 订单整体备注
             
         Returns:
             创建的订单信息
         """
-        # 生成订单ID
         order_id = f"ORDER_{int(datetime.now().timestamp() * 1000)}"
+        total_price = 0.0
+        processed_items = []
         
-        # 查询产品信息获取价格
-        unit_price = self._get_product_price(product_name)
-        if unit_price is None:
-            raise ValueError(f"产品不存在: {product_name}")
-        
-        total_price = unit_price * quantity
+        for item_data in items:
+            product_name = item_data["productName"]
+            quantity = item_data.get("quantity", 1)
+            sweetness_num = self._convert_sweetness_str_to_int(item_data.get("sweetness", "标准糖"))
+            ice_level_num = self._convert_ice_level_str_to_int(item_data.get("iceLevel", "正常冰"))
+            
+            unit_price = self._get_product_price(product_name)
+            if unit_price is None:
+                raise ValueError(f"产品不存在: {product_name}")
+            
+            item_price = unit_price * quantity
+            total_price += item_price
+            
+            processed_item = {
+                "order_id": order_id,
+                "product_name": product_name,
+                "sweetness": sweetness_num,
+                "ice_level": ice_level_num,
+                "quantity": quantity,
+                "unit_price": float(unit_price),
+                "item_price": float(item_price),
+                "remark": item_data.get("remark", "")
+            }
+            processed_items.append(processed_item)
         
         order_data = {
             "order_id": order_id,
             "user_id": user_id,
-            "product_id": 1,  # TODO: 从 products 表查询
-            "product_name": product_name,
-            "sweetness": sweetness,
-            "ice_level": ice_level,
-            "quantity": quantity,
-            "unit_price": float(unit_price),
             "total_price": float(total_price),
-            "remark": remark or ""
+            "remark": remark or "",
+            "status": "UNPAID"  # 默认状态
         }
+        created_order = self.order_dao.create_order(order_data)
         
-        return self.order_dao.create_order(order_data)
+        # 创建每个订单项
+        for item in processed_items:
+            self.order_dao.create_order_item(item)
+        
+        created_order["items"] = processed_items
+        return created_order
     
     def delete_order(self, user_id: int, order_id: str) -> bool:
         """
@@ -204,10 +219,10 @@ class OrderService:
     
     def format_order_response(self, order: Dict) -> str:
         """
-        格式化订单信息为字符串
+        格式化订单信息为字符串（支持多产品订单）
         
         Args:
-            order: 订单信息
+            order: 订单信息（包含 items 列表）
             
         Returns:
             格式化的订单信息字符串
@@ -215,25 +230,77 @@ class OrderService:
         sweetness_map = {1: "无糖", 2: "微糖", 3: "半糖", 4: "少糖", 5: "标准糖"}
         ice_level_map = {1: "热", 2: "温", 3: "去冰", 4: "少冰", 5: "正常冰"}
         
-        sweetness_text = sweetness_map.get(order.get("sweetness", 5), "标准糖")
-        ice_level_text = ice_level_map.get(order.get("ice_level", 5), "正常冰")
-        
         created_at = order.get("created_at", "")
         if isinstance(created_at, datetime):
             created_at = created_at.strftime("%Y-%m-%d %H:%M:%S")
         elif isinstance(created_at, str):
-            # 如果已经是字符串，直接使用
             pass
         else:
             created_at = str(created_at)
         
-        return f"""订单信息:
+        items = order.get("items", [])
+        
+        result = f"""订单信息:
 - 订单ID: {order.get('order_id', '')}
 - 用户ID: {order.get('user_id', '')}
-- 产品: {order.get('product_name', '')}
-- 甜度: {sweetness_text}
-- 冰量: {ice_level_text}
-- 数量: {order.get('quantity', 1)}
-- 总价: ¥{order.get('total_price', 0):.2f}
-- 备注: {order.get('remark', '无')}
-- 创建时间: {created_at}"""
+- 订单总价: ¥{order.get('total_price', 0):.2f}
+- 订单备注: {order.get('remark', '无')}
+- 创建时间: {created_at}
+
+订单项（共 {len(items)} 项）:"""
+        
+        for i, item in enumerate(items, 1):
+            sweetness_text = sweetness_map.get(item.get("sweetness", 5), "标准糖")
+            ice_level_text = ice_level_map.get(item.get("ice_level", 5), "正常冰")
+            result += f"""
+  {i}. {item.get('product_name', '')}
+     甜度: {sweetness_text} | 冰量: {ice_level_text} | 数量: {item.get('quantity', 1)}
+     单价: ¥{item.get('unit_price', 0):.2f} | 小计: ¥{item.get('item_price', 0):.2f}"""
+            if item.get("remark"):
+                result += f"\n     备注: {item.get('remark')}"
+        
+        return result
+    
+    def _convert_sweetness_str_to_int(self, sweetness: str) -> int:
+        """甜度字符串转数字"""
+        sweetness_map = {
+            "无糖": 1,
+            "微糖": 2,
+            "半糖": 3,
+            "少糖": 4,
+            "标准糖": 5
+        }
+        return sweetness_map.get(sweetness, 5)
+    
+    def _convert_ice_level_str_to_int(self, ice_level: str) -> int:
+        """冰量字符串转数字"""
+        ice_level_map = {
+            "热": 1,
+            "温": 2,
+            "去冰": 3,
+            "少冰": 4,
+            "正常冰": 5
+        }
+        return ice_level_map.get(ice_level, 5)
+    
+    def _convert_sweetness_int_to_str(self, sweetness: int) -> str:
+        """甜度数字转字符串"""
+        sweetness_map = {
+            1: "无糖",
+            2: "微糖",
+            3: "半糖",
+            4: "少糖",
+            5: "标准糖"
+        }
+        return sweetness_map.get(sweetness, "标准糖")
+    
+    def _convert_ice_level_int_to_str(self, ice_level: int) -> str:
+        """冰量数字转字符串"""
+        ice_level_map = {
+            1: "热",
+            2: "温",
+            3: "去冰",
+            4: "少冰",
+            5: "正常冰"
+        }
+        return ice_level_map.get(ice_level, "正常冰")
