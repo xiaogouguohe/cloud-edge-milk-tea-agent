@@ -241,6 +241,124 @@ class SupervisorAgent:
             print(f"调用 {agent_name} 时出现错误: {error_msg}")
             return f"抱歉，调用 {agent_info['name']} 时出现了问题，请稍后再试。"
     
+    def _should_decompose_task(self, user_input: str) -> bool:
+        """
+        判断是否应该进行任务分解
+        
+        Args:
+            user_input: 用户输入
+            
+        Returns:
+            是否应该进行任务分解
+        """
+        # 检测复杂任务的关键词
+        decomposition_keywords = [
+            "然后", "接着", "之后", "最后", "先", "再", "同时",
+            "和", "以及", "还有", "另外", "顺便"
+        ]
+        
+        # 检测是否包含多个任务类型的关键词
+        task_type_keywords = {
+            "order": ["下单", "点单", "购买", "订单"],
+            "consult": ["咨询", "了解", "介绍", "推荐", "价格"],
+            "feedback": ["反馈", "投诉", "建议", "评价"]
+        }
+        
+        user_input_lower = user_input.lower()
+        
+        # 检查是否包含多个任务类型
+        task_types_found = []
+        for task_type, keywords in task_type_keywords.items():
+            if any(keyword in user_input_lower for keyword in keywords):
+                task_types_found.append(task_type)
+        
+        # 如果包含多个任务类型，或者包含分解关键词，则进行任务分解
+        if len(task_types_found) > 1:
+            return True
+        
+        if any(keyword in user_input for keyword in decomposition_keywords):
+            return True
+        
+        return False
+    
+    def _execute_decomposed_tasks(self, subtasks, a2a_client) -> str:
+        """
+        执行分解后的子任务
+        
+        Args:
+            subtasks: 子任务列表（已排序）
+            a2a_client: A2A 客户端
+            
+        Returns:
+            整合后的结果
+        """
+        results = []
+        
+        for i, task in enumerate(subtasks, 1):
+            print(f"[SupervisorAgent] 执行任务 {i}/{len(subtasks)}: {task.description}", file=sys.stderr, flush=True)
+            
+            # 检查依赖是否已完成
+            if task.dependencies:
+                for dep_id in task.dependencies:
+                    dep_task = next((t for t in subtasks if t.task_id == dep_id), None)
+                    if dep_task and dep_task.status != "completed":
+                        error_msg = f"依赖任务 {dep_id} 未完成，无法执行任务 {task.task_id}"
+                        print(f"[SupervisorAgent] 错误: {error_msg}", file=sys.stderr, flush=True)
+                        task.status = "failed"
+                        task.error = error_msg
+                        continue
+            
+            # 执行任务
+            try:
+                task.status = "running"
+                
+                # 构建输入数据
+                input_data = task.input_data.copy()
+                if "input" not in input_data:
+                    input_data["input"] = task.description
+                
+                # 调用子智能体
+                a2a_request = {
+                    "input": input_data.get("input", task.description),
+                    "chat_id": self.chat_id,
+                    "user_id": self.user_id
+                }
+                
+                # 合并其他输入数据
+                a2a_request.update({k: v for k, v in input_data.items() if k != "input"})
+                
+                a2a_response = a2a_client.call_agent(task.agent, a2a_request)
+                
+                # 提取响应
+                if isinstance(a2a_response, dict):
+                    output = a2a_response.get("output", "")
+                    if output:
+                        task.result = output
+                        task.status = "completed"
+                        results.append(f"【任务 {i}】{task.description}\n结果: {output}\n")
+                    else:
+                        task.result = str(a2a_response)
+                        task.status = "completed"
+                        results.append(f"【任务 {i}】{task.description}\n结果: {task.result}\n")
+                else:
+                    task.result = str(a2a_response)
+                    task.status = "completed"
+                    results.append(f"【任务 {i}】{task.description}\n结果: {task.result}\n")
+                    
+            except Exception as e:
+                error_msg = str(e)
+                print(f"[SupervisorAgent] 执行任务 {task.task_id} 失败: {error_msg}", file=sys.stderr, flush=True)
+                task.status = "failed"
+                task.error = error_msg
+                results.append(f"【任务 {i}】{task.description}\n执行失败: {error_msg}\n")
+        
+        # 整合所有结果
+        if results:
+            final_result = "已完成所有任务：\n\n" + "\n".join(results)
+            return final_result
+        else:
+            return "任务执行失败，请稍后再试。"
+    
     def chat(self, user_input: str) -> str:
         """
         处理用户输入并返回回复
@@ -258,7 +376,50 @@ class SupervisorAgent:
         })
         
         try:
-            # 先判断是否需要路由到特定子智能体
+            # 检查是否应该进行任务分解
+            if self._should_decompose_task(user_input):
+                try:
+                    from supervisor_agent.task_decomposition import TaskDecompositionPlanner
+                    
+                    planner = TaskDecompositionPlanner()
+                    subtasks = planner.decompose_task(user_input)
+                    
+                    if subtasks and len(subtasks) > 1:
+                        # 复杂任务，进行分解和执行
+                        print(f"[SupervisorAgent] 检测到复杂任务，分解为 {len(subtasks)} 个子任务", file=sys.stderr, flush=True)
+                        
+                        # 拓扑排序，确定执行顺序
+                        sorted_tasks = planner.topological_sort(subtasks)
+                        
+                        # 执行所有子任务
+                        final_result = self._execute_decomposed_tasks(sorted_tasks, self.a2a_client)
+                        
+                        # 添加到历史记录
+                        self.history.append({
+                            "role": "assistant",
+                            "content": final_result
+                        })
+                        
+                        return final_result
+                    elif subtasks and len(subtasks) == 1:
+                        # 单个任务，直接执行
+                        task = subtasks[0]
+                        print(f"[SupervisorAgent] 单个任务: {task.description} ({task.agent})", file=sys.stderr, flush=True)
+                        agent_response = self.call_sub_agent(task.agent, task.input_data.get("input", user_input))
+                        
+                        self.history.append({
+                            "role": "assistant",
+                            "content": agent_response
+                        })
+                        
+                        return agent_response
+                except Exception as e:
+                    print(f"[SupervisorAgent] 任务分解失败，回退到简单路由: {str(e)}", file=sys.stderr, flush=True)
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+                    # 失败时回退到简单路由
+            
+            # 简单路由（原有逻辑）
             target_agent = self.route_to_agent(user_input)
             
             if target_agent:
