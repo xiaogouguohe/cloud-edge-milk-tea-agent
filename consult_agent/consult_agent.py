@@ -186,6 +186,24 @@ class ConsultAgent:
             traceback.print_exc(file=sys.stderr)
             return error_msg
     
+    def _should_use_tot_recommendation(self, user_input: str) -> bool:
+        """
+        判断是否应该使用 ToT 推荐功能
+        
+        Args:
+            user_input: 用户输入
+            
+        Returns:
+            是否应该使用 ToT 推荐
+        """
+        # 关键词匹配：个性化推荐相关
+        tot_keywords = [
+            "适合我", "推荐", "个性化", "根据", "帮我选", "帮我挑",
+            "不知道选什么", "选择困难", "推荐一下", "有什么好"
+        ]
+        user_input_lower = user_input.lower()
+        return any(keyword in user_input_lower for keyword in tot_keywords)
+    
     def _should_use_tool(self, user_input: str) -> Optional[Dict]:
         """
         使用 LLM 判断是否需要调用工具，并提取参数
@@ -272,6 +290,41 @@ class ConsultAgent:
         })
         
         try:
+            # 检查是否应该使用 ToT 推荐
+            if self._should_use_tot_recommendation(user_input):
+                try:
+                    # 动态导入，避免循环依赖
+                    import sys
+                    from pathlib import Path
+                    tot_module_path = Path(__file__).parent / "tot_recommendation.py"
+                    if tot_module_path.exists():
+                        from consult_agent.tot_recommendation import ToTRecommendationEngine
+                        from consult_mcp_server.consult_service import ConsultService
+                        
+                        # 初始化 ToT 推荐引擎
+                        consult_service = ConsultService()
+                        engine = ToTRecommendationEngine(consult_service=consult_service)
+                        
+                        # 执行 ToT 搜索
+                        best_node = engine.search(user_input)
+                        
+                        if best_node and best_node.products:
+                            # 格式化推荐结果
+                            recommendation = engine.format_recommendation(best_node)
+                            
+                            # 添加到历史记录
+                            self.history.append({
+                                "role": "assistant",
+                                "content": recommendation
+                            })
+                            
+                            return recommendation
+                except Exception as e:
+                    print(f"[ConsultAgent] ToT 推荐失败: {str(e)}", file=sys.stderr, flush=True)
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+                    # 失败时继续使用普通工具调用
+            
             # 使用 LLM 判断是否需要调用工具
             tool_call = self._should_use_tool(user_input)
             
