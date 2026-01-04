@@ -254,23 +254,36 @@ class OrderAgent:
 重要提示:
 - 当前用户ID是: {self.user_id}（整数类型）
 - 如果工具需要 userId 参数，必须使用整数类型: {self.user_id}
-- 从用户输入中提取产品名称、甜度、冰量、数量等信息
+- 从用户输入中提取产品名称、甜度、冰量、数量、订单ID等信息
 - 如果用户输入中包含用户ID，使用用户输入中的ID；否则使用当前会话的用户ID: {self.user_id}
-- **创建订单统一使用 order-create-order 工具，支持单个或多个产品**
 
 请判断：
 1. 是否需要调用工具？如果需要，返回工具名称
 2. 如果需要，提取所有必需的参数（userId 必须是整数类型）
 
 请以 JSON 格式返回，格式如下：
-- 如果不需要工具: {{"use_tool": false}}
-- 如果需要创建订单: {{"use_tool": true, "tool_name": "order-create-order", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "items": [{{"productName": "产品名称", "sweetness": "甜度", "iceLevel": "冰量", "quantity": 数量, "remark": "备注"}}], "remark": "订单整体备注"}}}}
-  - 如果用户只点一个产品，items 数组包含一个订单项
-  - 如果用户点多个产品，items 数组包含多个订单项
+
+1. 如果不需要工具: {{"use_tool": false}}
+
+2. 如果需要创建订单: {{"use_tool": true, "tool_name": "order-create-order", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "items": [{{"productName": "产品名称", "sweetness": "甜度", "iceLevel": "冰量", "quantity": 数量, "remark": "备注"}}], "remark": "订单整体备注"}}}}
+   - 如果用户只点一个产品，items 数组包含一个订单项
+   - 如果用户点多个产品，items 数组包含多个订单项
+
+3. 如果需要查询单个订单（只有订单ID）: {{"use_tool": true, "tool_name": "order-get-order", "mcp_server": "order-mcp-server", "parameters": {{"orderId": "ORDER_xxx"}}}}
+
+4. 如果需要查询单个订单（有用户ID和订单ID）: {{"use_tool": true, "tool_name": "order-get-order-by-user", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "orderId": "ORDER_xxx"}}}}
+
+5. 如果需要查询用户的所有订单: {{"use_tool": true, "tool_name": "order-get-orders-by-user", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}}}}}
+
+6. 如果需要删除订单: {{"use_tool": true, "tool_name": "order-delete-order", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "orderId": "ORDER_xxx"}}}}
+
+7. 如果需要更新订单备注: {{"use_tool": true, "tool_name": "order-update-remark", "mcp_server": "order-mcp-server", "parameters": {{"userId": {self.user_id}, "orderId": "ORDER_xxx", "remark": "新备注内容"}}}}
 
 注意：
 - userId 和 quantity 必须是数字类型，不是字符串
 - items 数组中的每个订单项都必须包含 productName, sweetness, iceLevel, quantity
+- 查询订单时，如果用户说"我的订单"或"历史订单"，使用 order-get-orders-by-user
+- 查询订单时，如果用户提供了订单ID，优先使用 order-get-order-by-user（更安全）
 
 只返回 JSON，不要其他文字。"""
         
