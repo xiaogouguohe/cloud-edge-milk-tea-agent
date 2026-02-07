@@ -168,6 +168,19 @@ class OrderService:
             更新后的订单信息
         """
         return self.order_dao.update_order_remark(user_id, order_id, remark)
+
+    def update_order_status(self, order_id: str, status: str) -> Optional[Dict]:
+        """
+        更新订单状态
+        
+        Args:
+            order_id: 订单ID
+            status: 新状态 (MAKING, READY, COMPLETED, etc.)
+            
+        Returns:
+            更新后的订单信息
+        """
+        return self.order_dao.update_order_status(order_id, status)
     
     def query_orders(self, user_id: int, filters: Optional[Dict] = None) -> List[Dict]:
         """

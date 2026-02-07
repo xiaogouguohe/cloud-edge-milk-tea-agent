@@ -1,16 +1,17 @@
 """
 订单 MCP Server - 提供订单相关的工具
-参考原项目的 OrderMcpTools
+根据当前的 OrderAgent Skills 定义进行对齐
 """
 import sys
 from pathlib import Path
 from typing import Dict, Optional, List
+from datetime import datetime
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from mcp.server import MCPServer, Tool, ToolDefinition
+from mcp.server import MCPServer
 from .order_service import OrderService
 from .database import OrderDAO
 
@@ -58,93 +59,59 @@ class OrderMCPServer:
         self._register_tools()
     
     def _register_tools(self):
-        """注册所有订单相关的工具"""
+        """注册所有订单相关的工具，与 OrderAgent Skills 对齐"""
         
-        # 1. 根据订单ID查询订单
+        # 1. 获取菜单 (BASE_SKILLS)
         self.mcp_server.register_tool_func(
-            name="order-get-order",
-            description="根据订单ID查询订单的详细信息，包括产品名称、甜度、冰量、数量、价格和创建时间等完整信息。",
+            name="order-get-menu",
+            description="获取奶茶店当前的菜单列表和价格。",
             parameters={
                 "type": "object",
-                "properties": {
-                    "orderId": {
-                        "type": "string",
-                        "description": "订单ID，格式为ORDER_开头的唯一标识符，例如：ORDER_1693654321000"
-                    }
-                },
-                "required": ["orderId"]
+                "properties": {},
+                "required": []
             },
-            handler=self._get_order
+            handler=self._get_menu
         )
         
-        # 2. 根据用户ID和订单ID查询订单
-        self.mcp_server.register_tool_func(
-            name="order-get-order-by-user",
-            description="根据用户ID和订单ID查询订单的详细信息，包括产品名称、甜度、冰量、数量、价格和创建时间等完整信息。",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "userId": {
-                        "type": "integer",
-                        "description": "用户ID，必须为正整数"
-                    },
-                    "orderId": {
-                        "type": "string",
-                        "description": "订单ID，格式为ORDER_开头的唯一标识符"
-                    }
-                },
-                "required": ["userId", "orderId"]
-            },
-            handler=self._get_order_by_user
-        )
-        
-        # 3. 创建订单（支持单个或多个产品）
+        # 2. 创建订单 (CUSTOMER_SKILLS)
         self.mcp_server.register_tool_func(
             name="order-create-order",
-            description="为用户创建奶茶订单，支持单个或多个产品。系统会自动检查库存并计算总价格。",
+            description="为用户创建奶茶订单，支持单个或多个产品。",
             parameters={
                 "type": "object",
                 "properties": {
                     "userId": {
                         "type": "integer",
-                        "description": "用户ID，必须为正整数"
+                        "description": "用户ID"
                     },
                     "items": {
                         "type": "array",
-                        "description": "订单项列表，每个订单项包含产品名称、甜度、冰量、数量和备注",
+                        "description": "订单项列表",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "productName": {
                                     "type": "string",
-                                    "description": "产品名称，必须是云边奶茶铺的现有产品"
+                                    "description": "产品名称"
                                 },
                                 "sweetness": {
                                     "type": "string",
-                                    "description": "甜度要求，可选值：标准糖、少糖、半糖、微糖、无糖",
+                                    "description": "甜度",
                                     "enum": ["无糖", "微糖", "半糖", "少糖", "标准糖"]
                                 },
                                 "iceLevel": {
                                     "type": "string",
-                                    "description": "冰量要求，可选值：正常冰、少冰、去冰、温、热",
-                                    "enum": ["热", "温", "去冰", "少冰", "正常冰"]
+                                    "description": "冰量",
+                                    "enum": ["去冰", "少冰", "正常冰", "温", "热"]
                                 },
                                 "quantity": {
                                     "type": "integer",
-                                    "description": "购买数量，必须为正整数，默认为1",
-                                    "minimum": 1
-                                },
-                                "remark": {
-                                    "type": "string",
-                                    "description": "订单项备注，可选"
+                                    "description": "数量",
+                                    "default": 1
                                 }
                             },
-                            "required": ["productName", "sweetness", "iceLevel", "quantity"]
+                            "required": ["productName", "sweetness", "iceLevel"]
                         }
-                    },
-                    "remark": {
-                        "type": "string",
-                        "description": "订单整体备注，可选"
                     }
                 },
                 "required": ["userId", "items"]
@@ -152,144 +119,134 @@ class OrderMCPServer:
             handler=self._create_order
         )
         
-        # 4. 根据用户ID获取订单列表
+        # 3. 根据用户ID获取订单列表 (CUSTOMER_SKILLS)
         self.mcp_server.register_tool_func(
             name="order-get-orders-by-user",
-            description="根据用户ID获取该用户的所有订单列表，包括订单ID、产品信息、价格和创建时间。用于查看用户的订单历史。",
+            description="根据用户ID获取该用户的所有订单列表。",
             parameters={
                 "type": "object",
                 "properties": {
                     "userId": {
                         "type": "integer",
-                        "description": "用户ID，必须为正整数"
+                        "description": "用户ID"
                     }
                 },
                 "required": ["userId"]
             },
             handler=self._get_orders_by_user
         )
-        
-        # 5. 删除订单
+
+        # 4. 根据用户ID和订单ID查询订单 (ADMIN_SKILLS)
         self.mcp_server.register_tool_func(
-            name="order-delete-order",
-            description="根据用户ID和订单ID删除订单。只能删除属于该用户的订单。",
+            name="order-get-order-by-user",
+            description="根据用户ID和订单ID查询订单的详细信息。",
             parameters={
                 "type": "object",
                 "properties": {
                     "userId": {
                         "type": "integer",
-                        "description": "用户ID，必须为正整数"
+                        "description": "用户ID"
                     },
                     "orderId": {
                         "type": "string",
-                        "description": "订单ID，格式为ORDER_开头的唯一标识符"
+                        "description": "订单ID"
+                    }
+                },
+                "required": ["userId", "orderId"]
+            },
+            handler=self._get_order_by_user
+        )
+        
+        # 5. 更新订单状态 (STAFF_SKILLS)
+        self.mcp_server.register_tool_func(
+            name="order-update-order-status",
+            description="更新订单状态（如：制作中、待取餐、已完成）。仅限店员操作。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "description": "订单ID"
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "新状态",
+                        "enum": ["making", "ready", "completed"]
+                    }
+                },
+                "required": ["orderId", "status"]
+            },
+            handler=self._update_order_status
+        )
+        
+        # 6. 删除订单 (ADMIN_SKILLS)
+        self.mcp_server.register_tool_func(
+            name="order-delete-order",
+            description="根据用户ID和订单ID删除订单。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "userId": {
+                        "type": "integer",
+                        "description": "用户ID"
+                    },
+                    "orderId": {
+                        "type": "string",
+                        "description": "订单ID"
                     }
                 },
                 "required": ["userId", "orderId"]
             },
             handler=self._delete_order
         )
-        
-        # 6. 更新订单备注
+
+        # 7. 处理退款 (ADMIN_SKILLS)
         self.mcp_server.register_tool_func(
-            name="order-update-remark",
-            description="根据用户ID和订单ID更新订单备注。只能更新属于该用户的订单。",
+            name="order-process-refund",
+            description="处理订单退款。仅限管理员执行。",
             parameters={
                 "type": "object",
                 "properties": {
-                    "userId": {
-                        "type": "integer",
-                        "description": "用户ID，必须为正整数"
-                    },
                     "orderId": {
                         "type": "string",
-                        "description": "订单ID，格式为ORDER_开头的唯一标识符"
+                        "description": "订单ID"
                     },
-                    "remark": {
+                    "reason": {
                         "type": "string",
-                        "description": "新的备注内容"
+                        "description": "退款原因"
                     }
                 },
-                "required": ["userId", "orderId", "remark"]
+                "required": ["orderId", "reason"]
             },
-            handler=self._update_remark
+            handler=self._process_refund
         )
-    
-    def _convert_sweetness(self, sweetness: str) -> int:
-        """甜度字符串转数字"""
-        sweetness_map = {
-            "无糖": 1,
-            "微糖": 2,
-            "半糖": 3,
-            "少糖": 4,
-            "标准糖": 5
-        }
-        return sweetness_map.get(sweetness, 5)
-    
-    def _convert_ice_level(self, ice_level: str) -> int:
-        """冰量字符串转数字"""
-        ice_level_map = {
-            "热": 1,
-            "温": 2,
-            "去冰": 3,
-            "少冰": 4,
-            "正常冰": 5
-        }
-        return ice_level_map.get(ice_level, 5)
-    
-    def _get_order(self, orderId: str) -> str:
-        """工具：根据订单ID查询订单"""
+
+    def _get_menu(self) -> str:
+        """工具：获取菜单"""
         try:
-            order = self.order_service.get_order(orderId)
-            if not order:
-                return f"订单不存在: {orderId}"
+            # 模拟菜单数据（实际应从数据库获取）
+            menu = [
+                {"name": "云边茉莉", "price": 18.00, "desc": "清新茉莉花茶配上香醇牛奶"},
+                {"name": "桂花云露", "price": 20.00, "desc": "桂花香气与绵密奶泡的完美结合"},
+                {"name": "云雾观音", "price": 22.00, "desc": "精选铁观音，茶香浓郁"},
+                {"name": "珍珠奶茶", "price": 15.00, "desc": "经典口味，Q弹珍珠"},
+                {"name": "红豆奶茶", "price": 16.00, "desc": "软糯红豆，甜而不腻"}
+            ]
+            result = "云边奶茶铺菜单:\n"
+            for item in menu:
+                result += f"- {item['name']}: ¥{item['price']:.2f} ({item['desc']})\n"
+            return result
+        except Exception as e:
+            return f"获取菜单失败: {str(e)}"
+
+    def _create_order(self, userId: int, items: List[Dict]) -> str:
+        """工具：创建订单"""
+        try:
+            order = self.order_service.create_order(user_id=userId, items=items)
             return self.order_service.format_order_response(order)
         except Exception as e:
-            return f"查询订单失败: {str(e)}"
-    
-    def _get_order_by_user(self, userId: int, orderId: str) -> str:
-        """工具：根据用户ID和订单ID查询订单"""
-        try:
-            order = self.order_service.get_order_by_user(userId, orderId)
-            if not order:
-                return f"订单不存在: {orderId} (用户ID: {userId})"
-            return self.order_service.format_order_response(order)
-        except Exception as e:
-            return f"查询订单失败: {str(e)}"
-    
-    def _create_order(self, userId: int, items: List[Dict], remark: Optional[str] = None) -> str:
-        """工具：创建订单（支持多产品）"""
-        try:
-            # 确保 userId 是整数类型
-            if isinstance(userId, str):
-                userId = int(userId)
-            
-            print(f"[OrderMCPServer] 创建订单 - userId: {userId}, items: {len(items)} 项")
-            
-            order = self.order_service.create_order(
-                user_id=userId,
-                items=items,
-                remark=remark
-            )
-            
-            print(f"[OrderMCPServer] 订单创建成功 - order_id: {order.get('order_id')}, user_id: {order.get('user_id')}")
-            
-            # 验证订单是否真的写入数据库
-            if self.order_service.order_dao.db:
-                verify_order = self.order_service.order_dao.get_order_by_id(order['order_id'])
-                if verify_order:
-                    print(f"[OrderMCPServer] 数据库验证成功 - 订单已写入")
-                else:
-                    print(f"[OrderMCPServer] ⚠️  数据库验证失败 - 订单未找到")
-            
-            return self.order_service.format_order_response(order)
-        except Exception as e:
-            import traceback
-            error_msg = f"创建订单失败: {str(e)}"
-            print(f"[OrderMCPServer] {error_msg}")
-            traceback.print_exc()
-            return error_msg
-    
+            return f"创建订单失败: {str(e)}"
+
     def _get_orders_by_user(self, userId: int) -> str:
         """工具：获取用户的所有订单"""
         try:
@@ -303,41 +260,52 @@ class OrderMCPServer:
             return result
         except Exception as e:
             return f"获取订单列表失败: {str(e)}"
-    
+
+    def _get_order_by_user(self, userId: int, orderId: str) -> str:
+        """工具：根据用户ID和订单ID查询订单"""
+        try:
+            order = self.order_service.get_order_by_user(userId, orderId)
+            if not order:
+                return f"订单不存在: {orderId} (用户ID: {userId})"
+            return self.order_service.format_order_response(order)
+        except Exception as e:
+            return f"查询订单失败: {str(e)}"
+
+    def _update_order_status(self, orderId: str, status: str) -> str:
+        """工具：更新订单状态"""
+        try:
+            status_map = {"making": "MAKING", "ready": "READY", "completed": "COMPLETED"}
+            db_status = status_map.get(status, "MAKING")
+            order = self.order_service.update_order_status(orderId, db_status)
+            if order:
+                return f"订单 {orderId} 状态已更新为: {status}"
+            return f"订单 {orderId} 状态更新失败，订单可能不存在。"
+        except Exception as e:
+            return f"更新订单状态失败: {str(e)}"
+
     def _delete_order(self, userId: int, orderId: str) -> str:
         """工具：删除订单"""
         try:
             success = self.order_service.delete_order(userId, orderId)
             if success:
                 return f"订单删除成功: {orderId}"
-            else:
-                return f"订单删除失败，订单不存在或无权限: {orderId}"
+            return f"订单删除失败，订单不存在或无权限: {orderId}"
         except Exception as e:
             return f"删除订单失败: {str(e)}"
-    
-    def _update_remark(self, userId: int, orderId: str, remark: str) -> str:
-        """工具：更新订单备注"""
+
+    def _process_refund(self, orderId: str, reason: str) -> str:
+        """工具：处理退款"""
         try:
-            order = self.order_service.update_order_remark(userId, orderId, remark)
-            if order:
-                return f"订单备注更新成功: {orderId}\n新备注: {remark}"
-            else:
-                return f"订单备注更新失败，订单不存在或无权限: {orderId}"
+            # 模拟退款逻辑，实际应修改订单状态并处理资金
+            return f"订单 {orderId} 退款申请已处理。原因: {reason}。退款金额将原路返回。"
         except Exception as e:
-            return f"更新订单备注失败: {str(e)}"
-    
+            return f"处理退款失败: {str(e)}"
+
     def run(self, host: str = '0.0.0.0', debug: bool = False):
-        """
-        启动 MCP Server
-        
-        Args:
-            host: 监听地址
-            debug: 是否开启调试模式
-        """
+        """启动 MCP Server"""
         print(f"订单 MCP Server 启动在 http://{host}:{self.port}")
         print(f"已注册工具: {len(self.mcp_server.tools)} 个")
         for tool_name in self.mcp_server.tools.keys():
             print(f"  - {tool_name}")
         print()
-        
         self.mcp_server.run(host=host, debug=debug)

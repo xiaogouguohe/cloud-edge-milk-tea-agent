@@ -297,6 +297,34 @@ class OrderDAO:
         if hasattr(self.db, 'connection'):
             self.db.connection.commit()
         return self.get_order_by_user_and_id(user_id, order_id)
+
+    def update_order_status(self, order_id: str, status: str) -> Optional[Dict]:
+        """
+        更新订单状态
+        
+        Args:
+            order_id: 订单ID
+            status: 新状态
+            
+        Returns:
+            更新后的订单信息
+        """
+        if self.use_memory:
+            for order in self.memory_orders:
+                if order.get("order_id") == order_id:
+                    order["status"] = status
+                    order["updated_at"] = datetime.now().isoformat()
+                    return order
+            return None
+        
+        if self.db.db_type == "sqlite":
+            query = "UPDATE orders SET status = ?, updated_at = ? WHERE order_id = ?"
+        else:
+            query = "UPDATE orders SET status = %s, updated_at = %s WHERE order_id = %s"
+        self.db.execute(query, (status, datetime.now(), order_id))
+        if hasattr(self.db, 'connection'):
+            self.db.connection.commit()
+        return self.get_order_by_id(order_id)
     
     def query_orders(self, user_id: int, filters: Optional[Dict] = None) -> List[Dict]:
         """
