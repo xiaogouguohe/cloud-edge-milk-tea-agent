@@ -25,33 +25,27 @@ class SupervisorAgent:
     def __init__(self, user_id: str = "default_user", chat_id: str = "default_chat"):
         self.user_id = user_id
         self.chat_id = chat_id
+        self.role: Optional[str] = None  # 当前会话的角色身份
         self.history: List[Dict[str, str]] = []
         
         # 系统提示词（监督者智能体的角色定义）
         self.system_prompt = """角色与职责:
 你是云边奶茶铺的监督者智能体，负责协调和管理其他子智能体的工作。
-你可以调用以下子智能体来处理不同类型的用户请求：
+
+身份验证流程:
+1. 在开始任何业务之前，你必须先确认用户的身份。
+2. 如果当前身份未知（role 为 None），你必须礼貌地要求用户输入身份。
+3. 接受的身份包括："顾客" (customer), "店员" (staff), "管理员" (admin)。
+4. 一旦身份确认，你将根据身份路由请求。
+
+子智能体调用:
 - feedback_agent: 处理用户反馈、投诉和差评
 - consult_agent: 处理产品咨询、活动信息和冲泡指导
-- order_agent: 处理订单相关业务，包括下单、查询、修改等
-
-工作流程:
-1. 接收用户请求
-2. 分析请求类型，判断应该调用哪个子智能体
-3. 调用相应的子智能体处理请求
-4. 整合子智能体的响应，返回给用户
+- order_agent: 处理订单相关业务（支持权限传递）
 
 约束:
-- 只负责协调和路由，不直接处理具体业务
-- 确保每个请求都能找到合适的子智能体处理
-- 如果子智能体不可用，需要提供友好的错误提示
-- 回答要友好、专业，体现云边奶茶铺的品牌形象
-
-当前阶段说明:
-目前子智能体功能还在开发中。当用户请求需要特定子智能体处理时，请告知用户：
-"我理解您的需求，这需要 [子智能体名称] 来处理。该功能正在开发中，敬请期待。"
-
-对于一般性对话，你可以直接回答。
+- 只有在身份确认后才能调用业务智能体。
+- 传递给 order_agent 时必须包含用户的 role 信息。
 """
         
         # 添加系统提示词到历史记录
@@ -216,6 +210,10 @@ class SupervisorAgent:
                 "user_id": self.user_id
             }
             
+            # 特殊处理：如果是 order_agent，传递角色权限
+            if agent_name == "order_agent" and self.role:
+                a2a_request["role"] = self.role
+            
             # 通过 A2A Client 调用子智能体
             a2a_response = self.a2a_client.call_agent(agent_name, a2a_request)
             
@@ -369,14 +367,30 @@ class SupervisorAgent:
         Returns:
             AI 回复
         """
+        # 1. 身份识别逻辑
+        if not self.role:
+            # 简单匹配用户输入的身份
+            input_lower = user_input.lower()
+            if "顾客" in input_lower or "customer" in input_lower:
+                self.role = "customer"
+                return "身份已确认为【顾客】。请问有什么可以帮您？您可以咨询产品或直接下单。"
+            elif "店员" in input_lower or "staff" in input_lower:
+                self.role = "staff"
+                return "身份已确认为【店员】。您可以处理订单状态。"
+            elif "管理员" in input_lower or "admin" in input_lower:
+                self.role = "admin"
+                return "身份已确认为【管理员】。您拥有所有管理权限，包括退款和删除订单。"
+            else:
+                return "欢迎来到云边奶茶铺！为了提供更好的服务，请先告知您的身份（顾客、店员 或 管理员）。"
+
         # 添加用户输入到历史记录
         self.history.append({
             "role": "user",
-            "content": user_input
+            "content": f"[{self.role}] {user_input}"
         })
         
         try:
-            # 检查是否应该进行任务分解
+            # 2. 检查是否应该进行任务分解
             if self._should_decompose_task(user_input):
                 try:
                     from supervisor_agent.task_decomposition import TaskDecompositionPlanner
@@ -464,6 +478,7 @@ class SupervisorAgent:
     
     def clear_history(self):
         """清空对话历史"""
+        self.role = None  # 重置身份
         self.history = [{
             "role": "system",
             "content": self.system_prompt
