@@ -195,6 +195,30 @@ class OrderService:
         """
         return self.order_dao.query_orders(user_id, filters)
     
+    def get_all_products(self) -> List[Dict]:
+        """
+        获取所有产品信息，包括价格和库存
+        
+        Returns:
+            产品列表
+        """
+        if not PRODUCT_DB_AVAILABLE or product_db is None:
+            # 降级处理：返回模拟数据
+            return [
+                {"name": "云边茉莉", "price": 18.00, "stock": 100, "status": 1},
+                {"name": "桂花云露", "price": 20.00, "stock": 80, "status": 1},
+                {"name": "云雾观音", "price": 22.00, "stock": 60, "status": 1},
+                {"name": "珍珠奶茶", "price": 15.00, "stock": 120, "status": 1},
+                {"name": "红豆奶茶", "price": 16.00, "stock": 100, "status": 1}
+            ]
+        
+        try:
+            query = "SELECT name, price, stock, status FROM products WHERE status = 1"
+            return product_db.fetch_all(query)
+        except Exception as e:
+            print(f"获取所有产品失败: {str(e)}")
+            return []
+    
     def _get_product_price(self, product_name: str) -> Optional[float]:
         """
         查询产品价格

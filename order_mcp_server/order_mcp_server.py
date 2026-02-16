@@ -224,17 +224,14 @@ class OrderMCPServer:
     def _get_menu(self) -> str:
         """工具：获取菜单"""
         try:
-            # 模拟菜单数据（实际应从数据库获取）
-            menu = [
-                {"name": "云边茉莉", "price": 18.00, "desc": "清新茉莉花茶配上香醇牛奶"},
-                {"name": "桂花云露", "price": 20.00, "desc": "桂花香气与绵密奶泡的完美结合"},
-                {"name": "云雾观音", "price": 22.00, "desc": "精选铁观音，茶香浓郁"},
-                {"name": "珍珠奶茶", "price": 15.00, "desc": "经典口味，Q弹珍珠"},
-                {"name": "红豆奶茶", "price": 16.00, "desc": "软糯红豆，甜而不腻"}
-            ]
-            result = "云边奶茶铺菜单:\n"
-            for item in menu:
-                result += f"- {item['name']}: ¥{item['price']:.2f} ({item['desc']})\n"
+            products = self.order_service.get_all_products()
+            if not products:
+                return "抱歉，目前没有可用的奶茶菜单。"
+            
+            result = "云边奶茶铺菜单 (支持冰度: 去冰/少冰/正常冰/温/热, 糖度: 无糖/微糖/半糖/少糖/标准糖):\n"
+            for p in products:
+                stock_status = "有货" if p.get('stock', 0) > 0 else "售罄"
+                result += f"- {p['name']}: ¥{p['price']:.2f} ({stock_status})\n"
             return result
         except Exception as e:
             return f"获取菜单失败: {str(e)}"
