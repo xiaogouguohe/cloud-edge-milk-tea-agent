@@ -11,7 +11,7 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from .database import OrderDAO
+from order_mcp_server.database import OrderDAO
 
 # 尝试导入数据库管理器
 try:

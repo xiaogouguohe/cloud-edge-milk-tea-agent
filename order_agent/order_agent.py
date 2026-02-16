@@ -106,23 +106,31 @@ class OrderAgent:
                 messages.append(message)
                 
                 for tool_call in message.tool_calls:
-                    skill_name = tool_call.function.name
+                    # 兼容处理：DashScope 返回的可能是对象也可能是字典
+                    if isinstance(tool_call, dict):
+                        skill_name = tool_call.get("function", {}).get("name")
+                        tool_call_id = tool_call.get("id")
+                        arguments_str = tool_call.get("function", {}).get("arguments")
+                    else:
+                        skill_name = tool_call.function.name
+                        tool_call_id = tool_call.id
+                        arguments_str = tool_call.function.arguments
                     
                     # 权限校验
                     allowed_skill_names = [s['function']['name'] for s in current_skills]
                     if skill_name not in allowed_skill_names:
                         content = f"权限拒绝：角色 {current_role} 无权调用 {skill_name}"
-                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": skill_name, "content": content})
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": content})
                         continue
 
                     try:
-                        arguments = json.loads(tool_call.function.arguments)
+                        arguments = json.loads(arguments_str)
                         
                         # 数据级越权校验
                         if current_role == "customer":
                             if "userId" in arguments and str(arguments["userId"]) != str(user_id):
                                 content = f"安全警告：您无权操作用户 {arguments['userId']} 的数据。"
-                                messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": skill_name, "content": content})
+                                messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": content})
                                 continue
                             if "userId" in arguments:
                                 arguments["userId"] = int(user_id)
@@ -133,13 +141,13 @@ class OrderAgent:
                         
                         messages.append({
                             "role": "tool",
-                            "tool_call_id": tool_call.id,
+                            "tool_call_id": tool_call_id,
                             "name": skill_name,
                             "content": tool_result
                         })
                         
                     except Exception as e:
-                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": skill_name, "content": f"错误: {str(e)}"})
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": f"错误: {str(e)}"})
 
                 # 5. 生成最终回复
                 final_response = Generation.call(model=DASHSCOPE_MODEL, messages=messages, result_format='message')
