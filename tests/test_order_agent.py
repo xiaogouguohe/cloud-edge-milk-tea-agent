@@ -18,7 +18,7 @@ class TestOrderAgent(unittest.TestCase):
     def setUp(self):
         """每个测试用例前初始化"""
         self.agent = OrderAgent()
-        self.user_id = "test_user_123"
+        self.user_id = 12345  # 统一改为数字 ID，确保符合 skills.py 中的 integer 类型定义
 
     # =================================================================
     # 1. 基础查询功能测试 (Base Skills)

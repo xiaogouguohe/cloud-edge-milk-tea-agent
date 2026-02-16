@@ -101,22 +101,42 @@ class OrderAgent:
             if response.status_code != 200:
                 return {"output": "抱歉，系统繁忙，请稍后再试。", "history": messages}
 
+            # 打印响应结构以便调试
+            # print(f"[DEBUG] LLM Response: {response}", file=sys.stderr)
+
             message = response.output.choices[0].message
             
             # 4. 处理工具调用
-            if hasattr(message, 'tool_calls') and message.tool_calls:
+            # 兼容不同版本的 DashScope SDK 返回结构
+            tool_calls = None
+            try:
+                if hasattr(message, 'tool_calls'):
+                    tool_calls = message.tool_calls
+                elif isinstance(message, dict) and 'tool_calls' in message:
+                    tool_calls = message['tool_calls']
+                elif hasattr(message, 'get') and message.get('tool_calls'):
+                    tool_calls = message.get('tool_calls')
+            except Exception:
+                tool_calls = None
+
+            if tool_calls:
                 messages.append(message)
                 
-                for tool_call in message.tool_calls:
+                for tool_call in tool_calls:
                     # 兼容处理：DashScope 返回的可能是对象也可能是字典
                     if isinstance(tool_call, dict):
                         skill_name = tool_call.get("function", {}).get("name")
                         tool_call_id = tool_call.get("id")
                         arguments_str = tool_call.get("function", {}).get("arguments")
                     else:
-                        skill_name = tool_call.function.name
-                        tool_call_id = tool_call.id
-                        arguments_str = tool_call.function.arguments
+                        # 增加对对象属性的防御性获取
+                        function_attr = getattr(tool_call, 'function', None)
+                        skill_name = getattr(function_attr, 'name', None) if function_attr else None
+                        tool_call_id = getattr(tool_call, 'id', None)
+                        arguments_str = getattr(function_attr, 'arguments', None) if function_attr else None
+                    
+                    if not skill_name:
+                        continue
                     
                     # 权限校验
                     allowed_skill_names = [s['function']['name'] for s in current_skills]
@@ -165,6 +185,9 @@ class OrderAgent:
                 return {"output": message.content, "history": messages}
             
         except Exception as e:
+            # 打印详细堆栈以便排查
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             print(f"[OrderAgent] 异常: {str(e)}", file=sys.stderr)
             return {"output": "处理请求时出错。", "history": messages}
 
