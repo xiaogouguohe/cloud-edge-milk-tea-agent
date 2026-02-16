@@ -218,34 +218,6 @@ class OrderService:
         except Exception as e:
             print(f"获取所有产品失败: {str(e)}")
             return []
-
-    def get_product_info(self, product_name: str) -> Optional[Dict]:
-        """
-        获取单个产品信息
-        
-        Args:
-            product_name: 产品名称
-            
-        Returns:
-            产品信息字典
-        """
-        if not PRODUCT_DB_AVAILABLE or product_db is None:
-            # 模拟数据
-            default_products = {
-                "云边茉莉": {"name": "云边茉莉", "price": 18.00, "stock": 100, "status": 1},
-                "桂花云露": {"name": "桂花云露", "price": 20.00, "stock": 80, "status": 1}
-            }
-            return default_products.get(product_name)
-        
-        try:
-            if product_db.db_type == "sqlite":
-                query = "SELECT name, price, stock, status FROM products WHERE name = ? AND status = 1"
-            else:
-                query = "SELECT name, price, stock, status FROM products WHERE name = %s AND status = 1"
-            return product_db.fetch_one(query, (product_name,))
-        except Exception as e:
-            print(f"查询产品失败: {str(e)}")
-            return None
     
     def _get_product_price(self, product_name: str) -> Optional[float]:
         """
