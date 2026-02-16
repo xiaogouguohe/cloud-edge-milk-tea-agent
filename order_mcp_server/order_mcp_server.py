@@ -74,6 +74,20 @@ class OrderMCPServer:
             },
             handler=self._get_menu
         )
+
+        # 1.1 获取单个产品信息 (BASE_SKILLS)
+        self.mcp_server.register_tool_func(
+            name="order-get-product-info",
+            description="获取某个特定奶茶产品的详细信息。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "productName": {"type": "string", "description": "奶茶名称"}
+                },
+                "required": ["productName"]
+            },
+            handler=self._get_product_info
+        )
         
         # 2. 创建订单 (CUSTOMER_SKILLS)
         self.mcp_server.register_tool_func(
@@ -237,6 +251,18 @@ class OrderMCPServer:
             return result
         except Exception as e:
             return f"获取菜单失败: {str(e)}"
+
+    def _get_product_info(self, productName: str) -> str:
+        """工具：获取单个产品信息"""
+        try:
+            p = self.order_service.get_product_info(productName)
+            if not p:
+                return f"抱歉，没有找到名为 '{productName}' 的产品。"
+            
+            stock_status = "有货" if p.get('stock', 0) > 0 else "售罄"
+            return f"产品信息: {p['name']}\n价格: ¥{p['price']:.2f}\n库存状态: {stock_status}\n支持规格：甜度（无糖到标准糖），冰量（去冰到热）"
+        except Exception as e:
+            return f"查询产品信息失败: {str(e)}"
 
     def _create_order(self, userId: int, items: List[Dict]) -> str:
         """工具：创建订单"""

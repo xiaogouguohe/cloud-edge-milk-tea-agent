@@ -16,6 +16,20 @@ BASE_SKILLS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "order_get_product_info",
+            "description": "获取某个特定奶茶产品的详细信息，包括价格和是否有货。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "productName": {"type": "string", "description": "奶茶名称"}
+                },
+                "required": ["productName"]
+            }
+        }
     }
 ]
 
