@@ -59,6 +59,29 @@ class TestOrderAgent(unittest.TestCase):
         self.assertEqual(args.get("productName"), "云边茉莉")
         print(f"✅ 产品详情测试通过 (参数提取: {args})")
 
+    @patch('order_agent.order_agent.OrderAgent._invoke_tool')
+    def test_product_out_of_stock(self, mock_invoke):
+        """测试：产品无货时的 Agent 回复策略"""
+        # 模拟工具返回“售罄”状态
+        mock_invoke.return_value = "产品信息: 云边茉莉\n价格: ¥18.00\n库存状态: 售罄"
+        
+        query = "现在还有云边茉莉吗？"
+        print(f"\n[测试] 产品无货场景 - 输入: '{query}'")
+        
+        result = self.agent.chat(query, self.user_id, role="base")
+        
+        print(f"Agent 回复: {result['output']}")
+        
+        # 验证逻辑：
+        # 1. 确保触发了工具调用
+        self.assertTrue(mock_invoke.called)
+        # 2. 确保 Agent 没有“幻觉”说有货，而是正确传达了卖完了的信息
+        self.assertTrue(
+            any(word in result['output'] for word in ["卖完", "售罄", "抱歉", "没有"]), 
+            "Agent 在产品无货时应给出合理的致歉或提示"
+        )
+        print("✅ 产品无货场景测试通过")
+
     # =================================================================
     # 后续功能预留位置 (下单、查询历史订单等)
     # =================================================================
