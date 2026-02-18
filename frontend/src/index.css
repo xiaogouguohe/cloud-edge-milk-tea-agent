@@ -1,0 +1,30 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  /* 奶茶色系 - 温暖舒适 */
+  --color-cream: #f5f0e8;
+  --color-milk: #faf6f0;
+  --color-tea: #8b7355;
+  --color-tea-dark: #5c4a3a;
+  --color-caramel: #c4a574;
+  --color-boba: #3d2914;
+  --color-mint: #7d9b76;
+  --color-error: #c45c5c;
+  --color-success: #6b8e6b;
+  --shadow-soft: 0 4px 20px rgba(139, 115, 85, 0.12);
+  --shadow-chat: 0 2px 8px rgba(61, 41, 20, 0.06);
+}
+
+body {
+  margin: 0;
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--color-cream);
+  color: var(--color-boba);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}

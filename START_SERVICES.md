@@ -1,5 +1,17 @@
 # 服务启动指南
 
+## 项目结构
+
+```
+cloud-edge-milk-tea-agent-skills/
+├── pip.conf           # pip 阿里云镜像配置（首次安装依赖时自动生效）
+├── frontend/          # 前端（React + TypeScript）
+├── supervisor_agent/  # 监督者智能体（主入口 API）
+├── order_agent/       # 订单智能体
+├── order_mcp_server/  # 订单 MCP 服务
+└── ...
+```
+
 ## 服务架构
 
 ```
@@ -46,11 +58,22 @@ python order_agent/run_order_agent.py
 ### 4. 启动 Supervisor Agent（主入口）
 
 ```bash
-# 终端 3
+# 终端 3 - 命令行模式
 python chat.py
 
-# 或直接运行
-python -c "from chat import main; main()"
+# 或 终端 3 - HTTP API 模式（供前端对接）
+python -m supervisor_agent.api
+# 服务运行在 http://localhost:8000
+```
+
+### 5. 启动前端（可选）
+
+```bash
+# 终端 4
+cd frontend
+npm install
+npm run dev
+# 前端运行在 http://localhost:5173
 ```
 
 ## 完整流程示例
@@ -132,7 +155,8 @@ print(result)
 
 ## 注意事项
 
-1. **启动顺序很重要**：必须先启动 MCP Server，再启动 Agent，最后启动 Supervisor
-2. **端口不能冲突**：确保端口 10002（MCP Server）和 10006（Order Agent）未被占用
+1. **启动顺序很重要**：必须先启动 MCP Server，再启动 Agent，最后启动 Supervisor API
+2. **端口不能冲突**：10002（MCP Server）、10006（Order Agent）、8000（Supervisor API）、5173（前端开发服务器）
 3. **服务发现**：确保 `services.json` 中的地址正确
 4. **数据库**：如果使用 MySQL，确保数据库已创建并初始化表结构
+5. **前端对接**：使用前端时需启动 `supervisor_agent.api`（而非 `chat.py`），前端通过 Vite 代理将 `/api` 转发到 `localhost:8000`

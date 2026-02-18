@@ -1,5 +1,35 @@
 # 本地环境设置指南（不使用 Docker）
 
+## 0. Python 环境与 pip 镜像
+
+项目根目录包含 `pip.conf`，配置 pip 使用**阿里云镜像**。可按以下方式使每次安装都走阿里云镜像：
+
+### 方式一：使用 run.sh（推荐）
+
+`./run.sh` 会在创建 venv 时自动把 `pip.conf` 复制到虚拟环境，之后该 venv 内的 `pip install` 都会使用阿里云镜像。
+
+### 方式二：手动创建虚拟环境
+
+```bash
+# 创建虚拟环境
+python3 -m venv .venv
+
+# 使该虚拟环境使用项目 pip 配置
+cp pip.conf .venv/pip.conf
+
+# 激活并安装依赖
+source .venv/bin/activate   # Linux/macOS
+pip install -r requirements.txt
+```
+
+### 方式三：临时指定镜像（不改配置）
+
+```bash
+pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+```
+
+---
+
 ## 1. MySQL 安装和配置
 
 ### macOS

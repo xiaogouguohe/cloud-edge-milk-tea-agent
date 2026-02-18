@@ -8,6 +8,11 @@ echo "Python 版本: $python_version"
 if [ ! -d "venv" ]; then
     echo "创建虚拟环境..."
     python3 -m venv venv
+    # 配置 pip 使用阿里云镜像（项目根目录 pip.conf）
+    if [ -f "pip.conf" ]; then
+        cp pip.conf venv/pip.conf
+        echo "已配置 pip 使用阿里云镜像"
+    fi
 fi
 
 # 激活虚拟环境

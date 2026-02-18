@@ -30,7 +30,18 @@
 
 ### 1. 安装依赖
 
+项目已配置 pip 使用阿里云镜像（见 `pip.conf`）。推荐使用 `run.sh` 自动创建虚拟环境并安装依赖：
+
 ```bash
+./run.sh
+```
+
+或手动安装：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+cp pip.conf .venv/pip.conf # 使用阿里云镜像
 pip install -r requirements.txt
 ```
 

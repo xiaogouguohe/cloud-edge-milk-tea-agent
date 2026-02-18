@@ -1,10 +1,14 @@
 # 核心依赖
 dashscope>=1.17.0
-python-dotenv>=1.0.0
+python-dotenv>=1.1.0
 
 # HTTP 服务（用于 A2A 和 MCP 协议）
 flask>=3.0.0
 requests>=2.31.0
+
+# 前端 API 服务（Supervisor Agent 对接）
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
 
 # 数据库支持（可选）
 pymysql>=1.1.0  # MySQL 支持
@@ -16,3 +20,8 @@ numpy>=1.24.0  # 用于向量相似度计算（提升性能）
 # Milvus Lite 向量数据库支持（可选，用于持久化存储向量）
 # 注意：必须使用 pymilvus[milvus_lite] 才能使用 Milvus Lite 功能
 pymilvus[milvus_lite]>=2.3.0  # Milvus 向量数据库 Python SDK（支持 Milvus Lite，无需 Docker）
+
+# ========== 前端依赖（Node.js）==========
+# 前端依赖在 package.json 中管理，请执行：
+#   npm install
+# 或使用 yarn / pnpm
