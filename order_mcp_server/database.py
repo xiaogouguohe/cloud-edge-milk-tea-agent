@@ -151,27 +151,23 @@ class OrderDAO:
         if self.use_memory:
             order_data["id"] = len(self.memory_orders) + 1
             order_data["created_at"] = datetime.now().isoformat()
-            order_data["updated_at"] = datetime.now().isoformat()
             self.memory_orders.append(order_data)
             return order_data
         
         # 插入数据库（只插入订单主表）
         if self.db.db_type == "sqlite":
             query = """INSERT INTO orders 
-                       (order_id, user_id, total_price, status, remark, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)"""
+                       (order_id, user_id, total_price, created_at)
+                       VALUES (?, ?, ?, ?)"""
         else:  # MySQL
             query = """INSERT INTO orders 
-                       (order_id, user_id, total_price, status, remark, created_at, updated_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)"""
+                       (order_id, user_id, total_price, created_at)
+                       VALUES (%s, %s, %s, %s)"""
         
         params = (
             order_data["order_id"],
             order_data["user_id"],
             order_data["total_price"],
-            order_data.get("status", "UNPAID"),
-            order_data.get("remark", ""),
-            datetime.now(),
             datetime.now()
         )
         
@@ -232,16 +228,15 @@ class OrderDAO:
         """事务内插入订单主记录（不提交）"""
         if self.db.db_type == "sqlite":
             query = """INSERT INTO orders 
-                       (order_id, user_id, total_price, status, remark, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)"""
+                       (order_id, user_id, total_price, created_at)
+                       VALUES (?, ?, ?, ?)"""
         else:
             query = """INSERT INTO orders 
-                       (order_id, user_id, total_price, status, remark, created_at, updated_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)"""
+                       (order_id, user_id, total_price, created_at)
+                       VALUES (%s, %s, %s, %s)"""
         params = (
             order_data["order_id"], order_data["user_id"], order_data["total_price"],
-            order_data.get("status", "UNPAID"), order_data.get("remark", ""),
-            datetime.now(), datetime.now()
+            datetime.now()
         )
         self.db.execute_no_commit(query, params)
         log_backend("db_insert_order_tx", order_id=order_data["order_id"], user_id=order_data["user_id"])
@@ -319,63 +314,6 @@ class OrderDAO:
         # 检查是否删除成功（通过查询确认）
         deleted_order = self.get_order_by_user_and_id(user_id, order_id)
         return deleted_order is None
-    
-    def update_order_remark(self, user_id: int, order_id: str, remark: str) -> Optional[Dict]:
-        """
-        更新订单备注（只更新订单主表）
-        
-        Args:
-            user_id: 用户ID
-            order_id: 订单ID
-            remark: 新备注
-            
-        Returns:
-            更新后的订单信息
-        """
-        if self.use_memory:
-            for order in self.memory_orders:
-                if order.get("order_id") == order_id and order.get("user_id") == user_id:
-                    order["remark"] = remark
-                    order["updated_at"] = datetime.now().isoformat()
-                    return order
-            return None
-        
-        if self.db.db_type == "sqlite":
-            query = "UPDATE orders SET remark = ?, updated_at = ? WHERE user_id = ? AND order_id = ?"
-        else:
-            query = "UPDATE orders SET remark = %s, updated_at = %s WHERE user_id = %s AND order_id = %s"
-        self.db.execute(query, (remark, datetime.now(), user_id, order_id))
-        if hasattr(self.db, 'connection'):
-            self.db.connection.commit()
-        return self.get_order_by_user_and_id(user_id, order_id)
-
-    def update_order_status(self, order_id: str, status: str) -> Optional[Dict]:
-        """
-        更新订单状态
-        
-        Args:
-            order_id: 订单ID
-            status: 新状态
-            
-        Returns:
-            更新后的订单信息
-        """
-        if self.use_memory:
-            for order in self.memory_orders:
-                if order.get("order_id") == order_id:
-                    order["status"] = status
-                    order["updated_at"] = datetime.now().isoformat()
-                    return order
-            return None
-        
-        if self.db.db_type == "sqlite":
-            query = "UPDATE orders SET status = ?, updated_at = ? WHERE order_id = ?"
-        else:
-            query = "UPDATE orders SET status = %s, updated_at = %s WHERE order_id = %s"
-        self.db.execute(query, (status, datetime.now(), order_id))
-        if hasattr(self.db, 'connection'):
-            self.db.connection.commit()
-        return self.get_order_by_id(order_id)
     
     def query_orders(self, user_id: int, filters: Optional[Dict] = None) -> List[Dict]:
         """

@@ -86,7 +86,7 @@ class OrderService:
         """
         return self.order_dao.get_orders_by_user(user_id)
     
-    def create_order(self, user_id: int, items: List[Dict], remark: Optional[str] = None) -> Dict:
+    def create_order(self, user_id: int, items: List[Dict]) -> Dict:
         """
         创建订单（支持多产品）
         工业级流程：事务内原子扣减库存 + 写订单，防止超卖
@@ -134,8 +134,6 @@ class OrderService:
             "order_id": order_id,
             "user_id": user_id,
             "total_price": float(total_price),
-            "remark": remark or "",
-            "status": "UNPAID"
         }
 
         if self.order_dao.use_memory:
@@ -161,7 +159,7 @@ class OrderService:
                     self.order_dao._create_order_item_tx(item)
 
             self.order_dao.db.run_transaction(_tx)
-            created_order = {**order_data, "items": processed_items}
+            created_order = {**order_data, "items": processed_items, "created_at": datetime.now()}
             log_backend("create_order_ok", order_id=order_data["order_id"])
 
         created_order.setdefault("items", processed_items)
@@ -179,33 +177,6 @@ class OrderService:
             是否删除成功
         """
         return self.order_dao.delete_order(user_id, order_id)
-    
-    def update_order_remark(self, user_id: int, order_id: str, remark: str) -> Optional[Dict]:
-        """
-        更新订单备注
-        
-        Args:
-            user_id: 用户ID
-            order_id: 订单ID
-            remark: 新备注
-            
-        Returns:
-            更新后的订单信息
-        """
-        return self.order_dao.update_order_remark(user_id, order_id, remark)
-
-    def update_order_status(self, order_id: str, status: str) -> Optional[Dict]:
-        """
-        更新订单状态
-        
-        Args:
-            order_id: 订单ID
-            status: 新状态 (MAKING, READY, COMPLETED, etc.)
-            
-        Returns:
-            更新后的订单信息
-        """
-        return self.order_dao.update_order_status(order_id, status)
     
     def query_orders(self, user_id: int, filters: Optional[Dict] = None) -> List[Dict]:
         """
@@ -327,7 +298,6 @@ class OrderService:
 - 订单ID: {order.get('order_id', '')}
 - 用户ID: {order.get('user_id', '')}
 - 订单总价: ¥{order.get('total_price', 0):.2f}
-- 订单备注: {order.get('remark', '无')}
 - 创建时间: {created_at}
 
 订单项（共 {len(items)} 项）:"""

@@ -108,7 +108,7 @@ class DatabaseManager:
                 )
             """)
         
-        # 创建订单表（主表，只存储订单基本信息）
+        # 创建订单表（主表，精简版：order_id, user_id, total_price, created_at）
         if self.db_type == "sqlite":
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
@@ -116,10 +116,7 @@ class DatabaseManager:
                     order_id VARCHAR(50) NOT NULL UNIQUE,
                     user_id BIGINT NOT NULL,
                     total_price DECIMAL(10,2) NOT NULL DEFAULT 0,
-                    status VARCHAR(20) DEFAULT 'UNPAID',
-                    remark TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             """)
@@ -130,10 +127,7 @@ class DatabaseManager:
                     order_id VARCHAR(50) NOT NULL UNIQUE,
                     user_id BIGINT NOT NULL,
                     total_price DECIMAL(10,2) NOT NULL DEFAULT 0,
-                    status VARCHAR(20) DEFAULT 'UNPAID',
-                    remark TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             """)
