@@ -72,17 +72,11 @@ class DatabaseManager:
         """初始化数据库表结构"""
         cursor = self.connection.cursor()
         
-        # 创建用户表
+        # 创建用户表（精简版：id, username，供 orders 外键引用）
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id BIGINT PRIMARY KEY,
-                username VARCHAR(50) NOT NULL UNIQUE,
-                phone VARCHAR(20),
-                email VARCHAR(100),
-                nickname VARCHAR(50),
-                status TINYINT DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                username VARCHAR(50) NOT NULL UNIQUE
             )
         """)
         

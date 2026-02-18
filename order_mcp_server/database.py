@@ -138,6 +138,22 @@ class OrderDAO:
         log_backend("decrement_stock", product_name=product_name, quantity=quantity, rows_affected=rows, mode="db")
         return rows
 
+    def ensure_user_exists(self, user_id: int) -> None:
+        """确保用户存在（供 orders 外键引用），不存在则插入"""
+        if self.use_memory:
+            return
+        username = str(user_id)
+        if self.db.db_type == "sqlite":
+            self.db.execute(
+                "INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)",
+                (user_id, username),
+            )
+        else:
+            self.db.execute(
+                "INSERT IGNORE INTO users (id, username) VALUES (%s, %s)",
+                (user_id, username),
+            )
+
     def create_order(self, order_data: Dict) -> Dict:
         """
         创建订单主记录
@@ -171,6 +187,7 @@ class OrderDAO:
             datetime.now()
         )
         
+        self.ensure_user_exists(order_data["user_id"])
         log_backend("db_insert_order", order_id=order_data["order_id"], user_id=order_data["user_id"])
         cursor = self.db.execute(query, params)
         result = self.get_order_by_id(order_data["order_id"])

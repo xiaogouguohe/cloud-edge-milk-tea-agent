@@ -145,6 +145,7 @@ class OrderService:
                 self.order_dao.create_order_item(item)
         else:
             # 数据库模式：事务内原子扣库存 + 写订单
+            self.order_dao.ensure_user_exists(user_id)
             log_backend("create_order_begin", mode="db", order_id=order_data["order_id"], user_id=user_id, items_count=len(processed_items))
             def _tx(db):
                 for item in processed_items:
