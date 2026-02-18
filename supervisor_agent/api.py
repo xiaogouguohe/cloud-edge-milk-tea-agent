@@ -11,6 +11,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from supervisor_agent.supervisor_agent import SupervisorAgent
+from supervisor_agent.session_store import save_session, load_session, delete_session
 
 app = FastAPI(title="Milk Tea Supervisor API")
 
@@ -23,8 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 使用字典存储会话，key 为 session_id
-# 注意：在生产环境中应该使用 Redis 等持久化存储
+# 内存缓存活跃会话，持久化在 session_store（SQLite）
 sessions: Dict[str, SupervisorAgent] = {}
 
 class ChatRequest(BaseModel):
@@ -45,25 +45,36 @@ class ChatResponse(BaseModel):
     role: Optional[str] = None
     pending_action: Optional[dict] = None  # 如 {"type": "product_update", "productName", "current", "proposed"}
 
+def _get_or_create_agent(session_id: str, user_id: str, chat_id: str) -> SupervisorAgent:
+    """获取或创建 Agent，优先从持久化加载"""
+    if session_id in sessions:
+        return sessions[session_id]
+    agent = SupervisorAgent(user_id=user_id, chat_id=chat_id)
+    loaded = load_session(session_id)
+    if loaded:
+        _user_id, _chat_id, role, history = loaded
+        if role is not None:
+            agent.role = role
+        if history:
+            agent.history = history
+    sessions[session_id] = agent
+    return agent
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
         session_id = f"{request.user_id}_{request.chat_id}"
+        agent = _get_or_create_agent(session_id, request.user_id, request.chat_id or "default")
         
-        # 获取或创建该会话的 SupervisorAgent 实例
-        if session_id not in sessions:
-            sessions[session_id] = SupervisorAgent(
-                user_id=request.user_id, 
-                chat_id=request.chat_id
-            )
-        
-        agent = sessions[session_id]
-        
-        # 若前端传入 role（登录场景），直接设置
         if request.role:
             agent.role = request.role
         
         result = agent.chat(user_input=request.message)
+        
+        # 持久化短期记忆（进程退出后可恢复）
+        save_session(session_id, request.user_id, request.chat_id or "default", agent.role, agent.history)
+        
         if isinstance(result, dict):
             reply = result.get("output", "")
             pending_action = result.get("pending_action")
@@ -87,21 +98,20 @@ async def chat(request: ChatRequest):
 async def set_identity(request: SetIdentityRequest):
     """设置会话身份（登录时调用）"""
     session_id = f"{request.user_id}_{request.chat_id}"
-    if session_id not in sessions:
-        sessions[session_id] = SupervisorAgent(
-            user_id=request.user_id,
-            chat_id=request.chat_id
-        )
-    sessions[session_id].role = request.role
+    agent = _get_or_create_agent(session_id, request.user_id, request.chat_id or "default")
+    agent.role = request.role
+    save_session(session_id, request.user_id, request.chat_id or "default", agent.role, agent.history)
     return {"status": "success", "role": request.role}
 
 @app.post("/api/clear")
 async def clear_session(user_id: str, chat_id: str = "default"):
+    """清空会话历史，并删除持久化数据。下次对话将重新开始。"""
     session_id = f"{user_id}_{chat_id}"
     if session_id in sessions:
         sessions[session_id].clear_history()
-        return {"status": "success", "message": f"Session {session_id} cleared"}
-    return {"status": "error", "message": "Session not found"}
+        del sessions[session_id]
+    delete_session(session_id)
+    return {"status": "success", "message": f"Session {session_id} cleared"}
 
 class ProductUpdateRequest(BaseModel):
     productName: str
