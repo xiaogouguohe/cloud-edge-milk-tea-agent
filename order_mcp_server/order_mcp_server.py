@@ -86,6 +86,45 @@ class OrderMCPServer:
             handler=self._get_product_info
         )
 
+        # 3. 创建订单（顾客）
+        self.mcp_server.register_tool_func(
+            name="order-create-order",
+            description="创建奶茶订单。当用户想要下单、点单或购买时使用此工具。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "userId": {"type": "integer", "description": "用户ID"},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "productName": {"type": "string"},
+                                "sweetness": {"type": "string", "enum": ["无糖", "微糖", "半糖", "少糖", "标准糖"]},
+                                "iceLevel": {"type": "string", "enum": ["去冰", "少冰", "正常冰", "温", "热"]},
+                                "quantity": {"type": "integer", "default": 1}
+                            },
+                            "required": ["productName", "sweetness", "iceLevel"]
+                        }
+                    }
+                },
+                "required": ["userId", "items"]
+            },
+            handler=self._create_order
+        )
+
+        # 4. 查询用户订单列表（顾客）
+        self.mcp_server.register_tool_func(
+            name="order-get-orders-by-user",
+            description="根据用户ID获取该用户的所有订单列表。",
+            parameters={
+                "type": "object",
+                "properties": {"userId": {"type": "integer", "description": "用户ID"}},
+                "required": ["userId"]
+            },
+            handler=self._get_orders_by_user
+        )
+
     def _get_menu(self) -> str:
         """工具：获取菜单"""
         try:
@@ -112,6 +151,27 @@ class OrderMCPServer:
             return f"产品：{product['name']}\n价格：¥{product['price']:.2f}\n库存状态：{stock_status}"
         except Exception as e:
             return f"获取产品信息失败: {str(e)}"
+
+    def _create_order(self, userId: int, items: list) -> str:
+        """工具：创建订单"""
+        try:
+            order = self.order_service.create_order(user_id=userId, items=items)
+            return self.order_service.format_order_response(order)
+        except Exception as e:
+            return f"创建订单失败: {str(e)}"
+
+    def _get_orders_by_user(self, userId: int) -> str:
+        """工具：获取用户订单列表"""
+        try:
+            orders = self.order_service.get_orders_by_user(userId)
+            if not orders:
+                return f"用户 {userId} 当前没有任何订单记录。"
+            result = f"用户 {userId} 的订单列表（共 {len(orders)} 条）:\n\n"
+            for order in orders:
+                result += self.order_service.format_order_response(order) + "\n\n"
+            return result
+        except Exception as e:
+            return f"获取订单列表失败: {str(e)}"
 
     def run(self, host: str = '0.0.0.0', debug: bool = False):
         """启动 MCP Server"""

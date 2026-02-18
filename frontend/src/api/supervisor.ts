@@ -6,6 +6,13 @@ export interface ChatRequest {
   message: string
   user_id: string
   chat_id?: string
+  role?: string
+}
+
+export interface SetIdentityRequest {
+  user_id: string
+  chat_id?: string
+  role: string
 }
 
 export interface ChatResponse {
@@ -19,7 +26,22 @@ export const chat = async (params: ChatRequest): Promise<ChatResponse> => {
     message: params.message,
     user_id: params.user_id,
     chat_id: params.chat_id ?? 'default',
+    role: params.role,
   })
+  return data
+}
+
+export const setIdentity = async (
+  params: SetIdentityRequest
+): Promise<{ status: string; role: string }> => {
+  const { data } = await axios.post<{ status: string; role: string }>(
+    `${API_BASE}/set-identity`,
+    {
+      user_id: params.user_id,
+      chat_id: params.chat_id ?? 'default',
+      role: params.role,
+    }
+  )
   return data
 }
 

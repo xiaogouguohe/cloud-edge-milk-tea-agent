@@ -30,9 +30,13 @@ class ChatRequest(BaseModel):
     message: str
     user_id: str
     chat_id: Optional[str] = "default"
-    # 注意：SupervisorAgent 内部管理自己的 history，
-    # 但为了兼容前端可能的 history 传递，我们保留这个字段
+    role: Optional[str] = None  # 前端登录时传入的身份：customer / staff
     history: Optional[List[Dict]] = None
+
+class SetIdentityRequest(BaseModel):
+    user_id: str
+    chat_id: Optional[str] = "default"
+    role: str  # customer / staff
 
 class ChatResponse(BaseModel):
     reply: str
@@ -53,8 +57,10 @@ async def chat(request: ChatRequest):
         
         agent = sessions[session_id]
         
-        # 调用 SupervisorAgent 的 chat 方法
-        # SupervisorAgent 会自动处理身份识别、任务分解和路由
+        # 若前端传入 role（登录场景），直接设置
+        if request.role:
+            agent.role = request.role
+        
         reply = agent.chat(user_input=request.message)
         
         return ChatResponse(
@@ -66,6 +72,18 @@ async def chat(request: ChatRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/set-identity")
+async def set_identity(request: SetIdentityRequest):
+    """设置会话身份（登录时调用）"""
+    session_id = f"{request.user_id}_{request.chat_id}"
+    if session_id not in sessions:
+        sessions[session_id] = SupervisorAgent(
+            user_id=request.user_id,
+            chat_id=request.chat_id
+        )
+    sessions[session_id].role = request.role
+    return {"status": "success", "role": request.role}
 
 @app.post("/api/clear")
 async def clear_session(user_id: str, chat_id: str = "default"):

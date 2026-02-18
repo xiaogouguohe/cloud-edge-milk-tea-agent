@@ -28,19 +28,22 @@
   opacity: 0.9;
 }
 
-.role-badge {
-  display: inline-block;
-  margin-top: 0.5rem;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.75rem;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-}
-
-.clear-btn {
+.header-actions {
   position: absolute;
   top: 1rem;
   right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.user-badge {
+  font-size: 0.75rem;
+  opacity: 0.95;
+  margin-right: 0.25rem;
+}
+
+.header-btn {
   padding: 0.4rem 0.8rem;
   font-size: 0.8rem;
   background: rgba(255, 255, 255, 0.2);
@@ -51,8 +54,102 @@
   transition: background 0.2s;
 }
 
-.clear-btn:hover {
+.header-btn:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+.header-btn--primary {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* 登录弹窗 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  min-width: 320px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.modal-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+  color: var(--color-boba);
+}
+
+.modal-desc {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--color-caramel);
+}
+
+.modal-form label {
+  display: block;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--color-boba);
+}
+
+.modal-form select,
+.modal-form input {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  border: 1px solid rgba(139, 115, 85, 0.25);
+  border-radius: 6px;
+}
+
+.modal-form input:focus,
+.modal-form select:focus {
+  outline: none;
+  border-color: var(--color-tea);
+}
+
+.modal-error {
+  font-size: 0.85rem;
+  color: var(--color-error);
+  margin-bottom: 0.5rem;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.modal-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+}
+
+.modal-btn--cancel {
+  background: var(--color-cream);
+  color: var(--color-boba);
+}
+
+.modal-btn--confirm {
+  background: var(--color-tea);
+  color: var(--color-cream);
+}
+
+.modal-btn--confirm:hover {
+  background: var(--color-tea-dark);
 }
 
 .chat {

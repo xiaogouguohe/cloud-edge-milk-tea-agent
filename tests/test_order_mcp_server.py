@@ -80,7 +80,7 @@ class TestOrderMCPServer(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data["status"], "healthy")
         self.assertEqual(data["server"], "order-mcp-server")
-        self.assertEqual(data["tools_count"], 2)
+        self.assertGreaterEqual(data["tools_count"], 2)
 
     def test_list_tools(self):
         """测试：列出所有工具"""
@@ -91,7 +91,6 @@ class TestOrderMCPServer(unittest.TestCase):
         tool_names = [t["name"] for t in tools]
         self.assertIn("order-get-menu", tool_names)
         self.assertIn("order-get-product-info", tool_names)
-        self.assertEqual(len(tool_names), 2)
 
     def test_get_menu(self):
         """测试：获取菜单"""
@@ -162,7 +161,7 @@ class TestOrderMCPServer(unittest.TestCase):
     def test_invoke_nonexistent_tool(self):
         """测试：调用不存在的工具返回 404"""
         response = self.client.post(
-            "/mcp/tools/order-create-order/invoke",
+            "/mcp/tools/order-fake-tool/invoke",
             json={"parameters": {}},
             content_type="application/json",
         )

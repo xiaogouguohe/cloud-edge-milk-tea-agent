@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { chat, clearSession } from './api/supervisor'
+import { chat, clearSession, setIdentity } from './api/supervisor'
 import './App.css'
 
-const USER_ID = 'user_001'
 const CHAT_ID = 'default'
 
 interface Message {
@@ -18,6 +17,11 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [role, setRole] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [showLoginModal, setShowLoginModal] = useState(false)
+  const [loginRole, setLoginRole] = useState<'customer' | 'staff'>('customer')
+  const [loginAccountId, setLoginAccountId] = useState('')
+  const [loginError, setLoginError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -27,6 +31,48 @@ function App() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  const currentUserId = userId || 'guest'
+
+  const handleLogin = async () => {
+    const accountId = loginAccountId.trim()
+    if (!accountId) {
+      setLoginError('请输入账号 ID')
+      return
+    }
+    if (!/^\d+$/.test(accountId)) {
+      setLoginError('账号 ID 需为数字（如 10001）')
+      return
+    }
+    setLoginError(null)
+    try {
+      await setIdentity({
+        user_id: accountId,
+        chat_id: CHAT_ID,
+        role: loginRole,
+      })
+      setUserId(accountId)
+      setRole(loginRole)
+      setShowLoginModal(false)
+      setLoginAccountId('')
+    } catch {
+      setLoginError('登录失败，请稍后重试')
+    }
+  }
+
+  const handleLogout = async () => {
+    if (userId) {
+      try {
+        await clearSession(userId, CHAT_ID)
+      } catch {
+        // ignore
+      }
+    }
+    setUserId(null)
+    setRole(null)
+    setMessages([])
+    setError(null)
+  }
 
   const handleSend = async () => {
     const text = input.trim()
@@ -47,8 +93,9 @@ function App() {
     try {
       const res = await chat({
         message: text,
-        user_id: USER_ID,
+        user_id: currentUserId,
         chat_id: CHAT_ID,
+        role: role || undefined,
       })
 
       if (res.role) setRole(res.role)
@@ -79,9 +126,9 @@ function App() {
 
   const handleClear = async () => {
     try {
-      await clearSession(USER_ID, CHAT_ID)
+      await clearSession(currentUserId, CHAT_ID)
       setMessages([])
-      setRole(null)
+      if (!userId) setRole(null)
       setError(null)
     } catch {
       setError('清空会话失败')
@@ -100,26 +147,100 @@ function App() {
       <header className="header">
         <h1 className="title">云边奶茶铺</h1>
         <p className="subtitle">智能点单 · 产品咨询 · 反馈服务</p>
-        {role && (
-          <span className="role-badge">
-            {role === 'customer' && '顾客'}
-            {role === 'staff' && '店员'}
-            {role === 'admin' && '管理员'}
-            {!['customer', 'staff', 'admin'].includes(role) && role}
-          </span>
-        )}
-        <button className="clear-btn" onClick={handleClear} type="button">
-          新对话
-        </button>
+        <div className="header-actions">
+          {userId && (
+            <span className="user-badge">
+              {role === 'customer' && '顾客'}
+              {role === 'staff' && '店员'}
+              {!['customer', 'staff'].includes(role || '') && role}
+              {' · '}ID: {userId}
+            </span>
+          )}
+          {userId ? (
+            <button className="header-btn" onClick={handleLogout} type="button">
+              退出
+            </button>
+          ) : (
+            <button
+              className="header-btn header-btn--primary"
+              onClick={() => setShowLoginModal(true)}
+              type="button"
+            >
+              登录
+            </button>
+          )}
+          <button className="header-btn" onClick={handleClear} type="button">
+            新对话
+          </button>
+        </div>
       </header>
+
+      {showLoginModal && (
+        <div className="modal-overlay" onClick={() => setShowLoginModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">登录</h3>
+            <p className="modal-desc">Demo 演示，无需密码</p>
+            <div className="modal-form">
+              <label>
+                身份
+                <select
+                  value={loginRole}
+                  onChange={(e) =>
+                    setLoginRole(e.target.value as 'customer' | 'staff')
+                  }
+                >
+                  <option value="customer">用户</option>
+                  <option value="staff">店员</option>
+                </select>
+              </label>
+              <label>
+                账号 ID
+                <input
+                  type="text"
+                  placeholder="请输入数字，如 10001"
+                  value={loginAccountId}
+                  onChange={(e) => setLoginAccountId(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                />
+              </label>
+              {loginError && <div className="modal-error">{loginError}</div>}
+              <div className="modal-buttons">
+                <button
+                  className="modal-btn modal-btn--cancel"
+                  onClick={() => setShowLoginModal(false)}
+                  type="button"
+                >
+                  取消
+                </button>
+                <button
+                  className="modal-btn modal-btn--confirm"
+                  onClick={handleLogin}
+                  type="button"
+                >
+                  登录
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="chat">
         <div className="messages">
           {messages.length === 0 && (
             <div className="welcome">
               <p>你好～ 我是云边奶茶铺的智能助手。</p>
-              <p>请先告诉我你的身份：顾客、店员或管理员。</p>
-              <p>确认身份后，我可以帮你点单、咨询产品或处理反馈～</p>
+              {userId ? (
+                <>
+                  <p>已登录为【{role === 'customer' ? '用户' : '店员'}】，账号 {userId}。</p>
+                  <p>可以点单、查询菜单、查看订单记录～</p>
+                </>
+              ) : (
+                <>
+                  <p>未登录可浏览菜单和价格，登录后可下单并查看订单记录。</p>
+                  <p>点击右上角「登录」选择身份并输入账号 ID。</p>
+                </>
+              )}
             </div>
           )}
           {messages.map((m) => (
