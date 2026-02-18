@@ -11,13 +11,22 @@ mkdir -p logs
 # 可选：过滤测试用例（传给 unittest -k）
 TEST_FILTER="$1"
 
-# 退出时清理进程（仅清理本脚本启动的进程）
+# 退出时清理进程：先按 PID 杀，再按端口兜底，确保测试启动的服务被关闭
 cleanup() {
     echo ""
     echo "清理服务进程..."
-    [[ -n $MCP_PID ]]    && kill $MCP_PID 2>/dev/null
-    [[ -n $AGENT_PID ]] && kill $AGENT_PID 2>/dev/null
-    [[ -n $SUP_PID ]]   && kill $SUP_PID 2>/dev/null
+    [[ -n $MCP_PID ]]    && kill $MCP_PID 2>/dev/null || true
+    [[ -n $AGENT_PID ]]  && kill $AGENT_PID 2>/dev/null || true
+    [[ -n $SUP_PID ]]   && kill $SUP_PID 2>/dev/null || true
+    sleep 1
+    # 按端口兜底，确保占用 10002/10006/8000 的进程被清理
+    for port in 10002 10006 8000; do
+        if lsof -ti:$port >/dev/null 2>&1; then
+            echo "  停止端口 $port 上的进程..."
+            lsof -ti:$port | xargs kill -9 2>/dev/null || true
+        fi
+    done
+    echo "  清理完成"
 }
 trap cleanup EXIT
 
