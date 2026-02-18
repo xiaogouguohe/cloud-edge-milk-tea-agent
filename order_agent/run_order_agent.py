@@ -32,14 +32,11 @@ def main():
     )
     
     print(f"订单智能体已注册到服务发现")
-    print(f"可用工具: {len(agent.get_available_tools())} 个")
-    for tool in agent.get_available_tools():
-        print(f"  - {tool['name']}: {tool['description']}")
     print()
     
     # 启动 A2A 服务
     try:
-        agent.start_a2a_server(host='0.0.0.0', port=10006, debug=False)
+        agent.start_a2a_server(host='0.0.0.0', port=10006)
     except KeyboardInterrupt:
         print("\n服务已停止")
 

@@ -79,6 +79,19 @@ class SupervisorAgent:
         # A2A 客户端（用于调用子智能体）
         self.a2a_client = A2AClient(service_discovery=self.service_discovery)
     
+    def _is_base_order_query(self, user_input: str) -> bool:
+        """
+        判断是否为菜单/价格/库存查询。此类查询无需登录，所有人均可访问。
+        """
+        keywords = [
+            "菜单", "有哪些", "有什么", "奶茶", "价格", "多少钱", "有货", "库存",
+            "售罄", "产品", "饮品", "喝什么", "推荐"
+        ]
+        input_lower = user_input.lower().strip()
+        if len(input_lower) < 2:
+            return False
+        return any(kw in user_input for kw in keywords)
+
     def route_to_agent(self, user_input: str) -> Optional[str]:
         """
         分析用户输入，判断应该路由到哪个子智能体
@@ -181,13 +194,14 @@ class SupervisorAgent:
         
         return None
     
-    def call_sub_agent(self, agent_name: str, user_input: str) -> str:
+    def call_sub_agent(self, agent_name: str, user_input: str, force_role: Optional[str] = None) -> str:
         """
         调用子智能体处理请求（使用 A2A 协议）
         
         Args:
             agent_name: 子智能体名称
             user_input: 用户输入
+            force_role: 强制使用的角色（如 "base" 用于未登录用户的 BASE_SKILLS 查询）
             
         Returns:
             子智能体的响应
@@ -211,8 +225,9 @@ class SupervisorAgent:
             }
             
             # 特殊处理：如果是 order_agent，传递角色权限
-            if agent_name == "order_agent" and self.role:
-                a2a_request["role"] = self.role
+            if agent_name == "order_agent":
+                role = force_role or self.role or "base"
+                a2a_request["role"] = role
             
             # 通过 A2A Client 调用子智能体
             a2a_response = self.a2a_client.call_agent(agent_name, a2a_request)
@@ -367,9 +382,15 @@ class SupervisorAgent:
         Returns:
             AI 回复
         """
-        # 1. 身份识别逻辑
+        # 1. 菜单/价格/库存查询：无需登录，所有人可访问
+        if self._is_base_order_query(user_input):
+            agent_response = self.call_sub_agent("order_agent", user_input, force_role="base")
+            self.history.append({"role": "user", "content": user_input})
+            self.history.append({"role": "assistant", "content": agent_response})
+            return agent_response
+
+        # 2. 身份识别逻辑（下单等操作需要先确认身份）
         if not self.role:
-            # 简单匹配用户输入的身份
             input_lower = user_input.lower()
             if "顾客" in input_lower or "customer" in input_lower:
                 self.role = "customer"
