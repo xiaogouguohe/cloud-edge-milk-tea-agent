@@ -82,7 +82,10 @@ class SupervisorAgent:
     def _is_base_order_query(self, user_input: str) -> bool:
         """
         判断是否为菜单/价格/库存查询。此类查询无需登录，所有人均可访问。
+        修改类请求（改价格、改库存等）不算 base 查询，需走身份校验。
         """
+        if any(kw in user_input for kw in ["修改", "改成", "改为", "更新", "调整"]):
+            return False
         keywords = [
             "菜单", "有哪些", "有什么", "奶茶", "价格", "多少钱", "有货", "库存",
             "售罄", "产品", "饮品", "喝什么", "推荐"
@@ -120,7 +123,8 @@ class SupervisorAgent:
         order_keywords = [
             "下单", "订单", "点单", "购买", "结账", "支付", "购物车",
             "取消订单", "修改订单", "查询订单", "我要", "给我", "来一杯",
-            "来一份", "要一杯", "要一份", "点一杯", "点一份"
+            "来一份", "要一杯", "要一份", "点一杯", "点一份",
+            "修改产品", "改价格", "改库存", "产品表", "单价", "库存"
         ]
         if any(keyword in user_input_lower for keyword in order_keywords):
             return "order_agent"
@@ -235,12 +239,13 @@ class SupervisorAgent:
             # 提取响应内容
             if isinstance(a2a_response, dict):
                 output = a2a_response.get("output", "")
+                pending_action = a2a_response.get("pending_action")
+                if pending_action:
+                    return {"output": output or str(a2a_response), "pending_action": pending_action}
                 if output:
                     return output
-                # 如果没有 output 字段，尝试直接返回整个响应
                 return str(a2a_response)
-            else:
-                return str(a2a_response)
+            return str(a2a_response)
                 
         except ValueError as e:
             # 服务未找到
@@ -460,13 +465,8 @@ class SupervisorAgent:
             if target_agent:
                 # 需要特定子智能体处理
                 agent_response = self.call_sub_agent(target_agent, user_input)
-                
-                # 将路由决策和子智能体响应添加到历史记录
-                self.history.append({
-                    "role": "assistant",
-                    "content": agent_response
-                })
-                
+                content = agent_response.get("output", agent_response) if isinstance(agent_response, dict) else agent_response
+                self.history.append({"role": "assistant", "content": content})
                 return agent_response
             else:
                 # 一般性对话，直接使用 LLM 处理

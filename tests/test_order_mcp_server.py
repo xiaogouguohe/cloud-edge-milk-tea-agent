@@ -94,6 +94,56 @@ class TestOrderMCPServer(unittest.TestCase):
         self.assertIn("order-get-menu", tool_names)
         self.assertIn("order-get-product-info", tool_names)
         self.assertIn("order-get-orders-by-user", tool_names)
+        self.assertIn("order-propose-product-update", tool_names)
+        self.assertIn("order-update-product", tool_names)
+
+    def test_propose_product_update(self):
+        """测试：提议修改产品（不落库），返回当前值与拟修改值"""
+        self._prepare_products([("云边茉莉", "优质茉莉花茶", 18.00, 100)])
+
+        response = self.client.post(
+            "/mcp/tools/order-propose-product-update/invoke",
+            json={"parameters": {"productName": "云边茉莉", "price": 20}},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["status"], "success")
+        result = data.get("result", "")
+        import json
+        parsed = json.loads(result)
+        self.assertTrue(parsed.get("_propose_product_update"))
+        self.assertEqual(parsed["productName"], "云边茉莉")
+        self.assertEqual(parsed["current"]["price"], 18.0)
+        self.assertEqual(parsed["current"]["stock"], 100)
+        self.assertEqual(parsed["proposed"]["price"], 20)
+
+    def test_update_product(self):
+        """测试：执行产品修改"""
+        self._prepare_products([("云边茉莉", "优质茉莉花茶", 18.00, 100)])
+
+        response = self.client.post(
+            "/mcp/tools/order-update-product/invoke",
+            json={"parameters": {"productName": "云边茉莉", "price": 22, "stock": 80}},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["status"], "success")
+        result = data.get("result", "")
+        self.assertIn("云边茉莉", result)
+        self.assertIn("22", result)
+        self.assertIn("80", result)
+
+        # 验证数据库已更新
+        r2 = self.client.post(
+            "/mcp/tools/order-get-product-info/invoke",
+            json={"parameters": {"productName": "云边茉莉"}},
+            content_type="application/json",
+        )
+        info = r2.get_json().get("result", "")
+        self.assertIn("22", info)
+        self.assertIn("有货", info)
 
     def test_get_menu(self):
         """测试：获取菜单"""

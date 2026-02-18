@@ -208,6 +208,89 @@ class OrderService:
             if p.get("name") == product_name:
                 return p
         return None
+
+    def propose_product_update(self, product_name: str, price: Optional[float] = None, stock: Optional[int] = None) -> Dict:
+        """
+        提议修改产品（不落库），返回当前值与拟修改值，供前端确认。
+        
+        Args:
+            product_name: 产品名称
+            price: 拟修改的单价（None 表示不修改）
+            stock: 拟修改的库存（None 表示不修改）
+            
+        Returns:
+            {"ok": True, "productName": str, "current": {price, stock}, "proposed": {price?, stock?}}
+            或 {"ok": False, "error": str}
+        """
+        if price is None and stock is None:
+            return {"ok": False, "error": "请至少指定要修改的单价或库存"}
+        product = self.get_product_info(product_name)
+        if not product:
+            return {"ok": False, "error": f"未找到产品「{product_name}」"}
+        current = {"price": float(product.get("price", 0)), "stock": int(product.get("stock", 0))}
+        proposed = {}
+        if price is not None:
+            if price < 0:
+                return {"ok": False, "error": "单价不能为负数"}
+            proposed["price"] = float(price)
+        if stock is not None:
+            if stock < 0:
+                return {"ok": False, "error": "库存不能为负数"}
+            proposed["stock"] = int(stock)
+        return {
+            "ok": True,
+            "productName": product_name,
+            "current": current,
+            "proposed": proposed,
+        }
+
+    def update_product(self, product_name: str, price: Optional[float] = None, stock: Optional[int] = None) -> Dict:
+        """
+        执行产品修改（落库）。调用前应由 propose_product_update 确认。
+        
+        Args:
+            product_name: 产品名称
+            price: 新单价（None 表示不修改）
+            stock: 新库存（None 表示不修改）
+            
+        Returns:
+            {"ok": True, "productName": str, "updated": {price?, stock?}}
+            或 {"ok": False, "error": str}
+        """
+        if price is None and stock is None:
+            return {"ok": False, "error": "请至少指定要修改的单价或库存"}
+        product = self.get_product_info(product_name)
+        if not product:
+            return {"ok": False, "error": f"未找到产品「{product_name}」"}
+        if not PRODUCT_DB_AVAILABLE or product_db is None:
+            return {"ok": False, "error": "当前为模拟数据模式，无法修改产品"}
+        try:
+            updates = []
+            params = []
+            if price is not None:
+                if price < 0:
+                    return {"ok": False, "error": "单价不能为负数"}
+                updates.append("price = ?" if product_db.db_type == "sqlite" else "price = %s")
+                params.append(price)
+            if stock is not None:
+                if stock < 0:
+                    return {"ok": False, "error": "库存不能为负数"}
+                updates.append("stock = ?" if product_db.db_type == "sqlite" else "stock = %s")
+                params.append(stock)
+            params.append(product_name)
+            ph = "?" if product_db.db_type == "sqlite" else "%s"
+            query = f"UPDATE products SET {', '.join(updates)} WHERE name = {ph}"
+            product_db.execute(query, tuple(params))
+            log_backend("update_product", product_name=product_name, price=price, stock=stock)
+            updated = {}
+            if price is not None:
+                updated["price"] = float(price)
+            if stock is not None:
+                updated["stock"] = int(stock)
+            return {"ok": True, "productName": product_name, "updated": updated}
+        except Exception as e:
+            log_backend("update_product", error=str(e))
+            return {"ok": False, "error": str(e)}
     
     def get_all_products(self) -> List[Dict]:
         """

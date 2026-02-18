@@ -15,10 +15,30 @@ export interface SetIdentityRequest {
   role: string
 }
 
+export interface PendingActionProductUpdate {
+  type: 'product_update'
+  productName: string
+  current: { price?: number; stock?: number }
+  proposed: { price?: number; stock?: number }
+}
+
 export interface ChatResponse {
   reply: string
   session_id: string
   role?: string
+  pending_action?: PendingActionProductUpdate
+}
+
+export const productUpdate = async (params: {
+  productName: string
+  price?: number
+  stock?: number
+}): Promise<{ status: string; message: string }> => {
+  const { data } = await axios.post<{ status: string; message: string }>(
+    `${API_BASE}/product/update`,
+    params
+  )
+  return data
 }
 
 export const chat = async (params: ChatRequest): Promise<ChatResponse> => {

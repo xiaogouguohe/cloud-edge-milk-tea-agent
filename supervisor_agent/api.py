@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import sys
+import requests
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -42,6 +43,7 @@ class ChatResponse(BaseModel):
     reply: str
     session_id: str
     role: Optional[str] = None
+    pending_action: Optional[dict] = None  # 如 {"type": "product_update", "productName", "current", "proposed"}
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -61,10 +63,18 @@ async def chat(request: ChatRequest):
         if request.role:
             agent.role = request.role
         
-        reply = agent.chat(user_input=request.message)
-        
+        result = agent.chat(user_input=request.message)
+        if isinstance(result, dict):
+            reply = result.get("output", "")
+            pending_action = result.get("pending_action")
+            return ChatResponse(
+                reply=reply,
+                session_id=session_id,
+                role=agent.role,
+                pending_action=pending_action
+            )
         return ChatResponse(
-            reply=reply,
+            reply=result,
             session_id=session_id,
             role=agent.role
         )
@@ -92,6 +102,38 @@ async def clear_session(user_id: str, chat_id: str = "default"):
         sessions[session_id].clear_history()
         return {"status": "success", "message": f"Session {session_id} cleared"}
     return {"status": "error", "message": "Session not found"}
+
+class ProductUpdateRequest(BaseModel):
+    productName: str
+    price: Optional[float] = None
+    stock: Optional[int] = None
+
+@app.post("/api/product/update")
+async def product_update(req: ProductUpdateRequest):
+    """执行产品修改（供前端确认按钮和测试直接调用，绕过前端交互）"""
+    if req.price is None and req.stock is None:
+        raise HTTPException(status_code=400, detail="请至少指定 price 或 stock")
+    try:
+        from service_discovery import ServiceDiscovery
+        sd = ServiceDiscovery(method="config")
+        svc = sd.discover("order-mcp-server")
+        if not svc:
+            raise HTTPException(status_code=503, detail="order-mcp-server 不可用")
+        url = f"{svc['url']}/mcp/tools/order-update-product/invoke"
+        params = {"productName": req.productName}
+        if req.price is not None:
+            params["price"] = req.price
+        if req.stock is not None:
+            params["stock"] = req.stock
+        resp = requests.post(url, json={"parameters": params}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != "success":
+            raise HTTPException(status_code=400, detail=data.get("error", "修改失败"))
+        result = data.get("result", "")
+        return {"status": "success", "message": result}
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=503, detail=f"调用订单服务失败: {str(e)}")
 
 @app.get("/api/health")
 async def health_check():

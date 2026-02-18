@@ -277,6 +277,23 @@ class OrderAgent:
                         if is_stock_error:
                             print(f"[OrderAgent] 检测到库存不足，直接返回: {tool_result[:100]}...", file=sys.stderr, flush=True)
                             return {"output": tool_result, "history": messages}
+
+                        # 提议修改产品：返回 pending_action 供前端确认
+                        if skill_name == "order_propose_product_update":
+                            try:
+                                data = json.loads(tool_result)
+                                if data.get("_propose_product_update"):
+                                    pending = {
+                                        "type": "product_update",
+                                        "productName": data.get("productName", ""),
+                                        "current": data.get("current", {}),
+                                        "proposed": data.get("proposed", {}),
+                                    }
+                                    msg = data.get("message", tool_result)
+                                    print(f"[OrderAgent] 提议修改产品，返回 pending_action", file=sys.stderr, flush=True)
+                                    return {"output": msg, "history": messages, "pending_action": pending}
+                            except (json.JSONDecodeError, KeyError):
+                                pass
                         
                     except Exception as e:
                         messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": f"错误: {str(e)}"})
@@ -336,7 +353,7 @@ class OrderAgent:
         a2a_server = A2AServer(agent_name=self.agent_name, port=port)
         sessions = {}
 
-        def handle_request(data: Dict) -> str:
+        def handle_request(data: Dict):
             user_input = data.get("input", "")
             user_id = str(data.get("user_id", "unknown"))
             role = data.get("role", "customer")
@@ -348,6 +365,8 @@ class OrderAgent:
             result = self.chat(user_input, user_id, role, history)
             sessions[session_key] = result["history"][-20:]
             
+            if result.get("pending_action"):
+                return {"output": result["output"], "pending_action": result["pending_action"]}
             return result["output"]
         
         a2a_server.set_handler(handle_request)

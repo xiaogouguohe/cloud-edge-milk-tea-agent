@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { chat, clearSession, setIdentity } from './api/supervisor'
+import { chat, clearSession, setIdentity, productUpdate } from './api/supervisor'
+import type { PendingActionProductUpdate } from './api/supervisor'
 import './App.css'
 
 const CHAT_ID = 'default'
@@ -22,6 +23,8 @@ function App() {
   const [loginRole, setLoginRole] = useState<'customer' | 'staff'>('customer')
   const [loginAccountId, setLoginAccountId] = useState('')
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<PendingActionProductUpdate | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -107,6 +110,10 @@ function App() {
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, assistantMessage])
+
+      if (res.pending_action?.type === 'product_update') {
+        setPendingAction(res.pending_action)
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '请求失败，请稍后重试'
       setError(msg)
@@ -124,10 +131,39 @@ function App() {
     }
   }
 
+  const handleConfirmProductUpdate = async () => {
+    if (!pendingAction) return
+    setConfirmLoading(true)
+    try {
+      const payload: { productName: string; price?: number; stock?: number } = {
+        productName: pendingAction.productName,
+      }
+      if (pendingAction.proposed.price !== undefined) payload.price = pendingAction.proposed.price
+      if (pendingAction.proposed.stock !== undefined) payload.stock = pendingAction.proposed.stock
+      const { message } = await productUpdate(payload)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `✅ ${message}`,
+          timestamp: new Date(),
+        },
+      ])
+      setPendingAction(null)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '修改失败'
+      setError(msg)
+    } finally {
+      setConfirmLoading(false)
+    }
+  }
+
   const handleClear = async () => {
     try {
       await clearSession(currentUserId, CHAT_ID)
       setMessages([])
+      setPendingAction(null)
       if (!userId) setRole(null)
       setError(null)
     } catch {
@@ -174,6 +210,47 @@ function App() {
           </button>
         </div>
       </header>
+
+      {pendingAction && (
+        <div className="modal-overlay" onClick={() => !confirmLoading && setPendingAction(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">确认修改产品</h3>
+            <div className="modal-desc">
+              <p>产品：{pendingAction.productName}</p>
+              <ul style={{ marginTop: 8, paddingLeft: 20 }}>
+                {pendingAction.proposed.price !== undefined && (
+                  <li>
+                    单价：¥{pendingAction.current.price ?? '-'} → ¥{pendingAction.proposed.price}
+                  </li>
+                )}
+                {pendingAction.proposed.stock !== undefined && (
+                  <li>
+                    库存：{pendingAction.current.stock ?? '-'} → {pendingAction.proposed.stock}
+                  </li>
+                )}
+              </ul>
+            </div>
+            <div className="modal-buttons">
+              <button
+                className="modal-btn modal-btn--cancel"
+                onClick={() => !confirmLoading && setPendingAction(null)}
+                disabled={confirmLoading}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="modal-btn modal-btn--confirm"
+                onClick={handleConfirmProductUpdate}
+                disabled={confirmLoading}
+                type="button"
+              >
+                {confirmLoading ? '执行中...' : '确认修改'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLoginModal && (
         <div className="modal-overlay" onClick={() => setShowLoginModal(false)}>

@@ -39,10 +39,9 @@ class A2AServer:
                 # 调用处理函数
                 if self.handler:
                     result = self.handler(data)
-                    return jsonify({
-                        "output": result,
-                        "status": "success"
-                    })
+                    if isinstance(result, dict):
+                        return jsonify({**result, "status": "success"})
+                    return jsonify({"output": result, "status": "success"})
                 else:
                     return jsonify({"error": "Handler not set"}), 500
                     
@@ -82,9 +81,9 @@ class A2AServer:
     def set_handler(self, handler: Callable[[Dict], str]):
         """
         设置请求处理函数
-        
+
         Args:
-            handler: 处理函数，接收输入数据，返回处理结果
+            handler: 处理函数，接收输入数据，返回处理结果（str 或 dict，dict 时可含 output、pending_action 等）
         """
         self.handler = handler
     

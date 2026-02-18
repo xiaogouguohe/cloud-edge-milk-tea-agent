@@ -77,7 +77,40 @@ CUSTOMER_SKILLS = BASE_SKILLS + [
 ]
 
 # --- 店员技能 (Staff) ---
-STAFF_SKILLS = CUSTOMER_SKILLS + []
+STAFF_SKILLS = CUSTOMER_SKILLS + [
+    {
+        "type": "function",
+        "function": {
+            "name": "order_propose_product_update",
+            "description": "提议修改产品的单价或库存。不执行修改，仅返回当前值与拟修改值，供前端弹出确认框。当店员要求修改产品价格或库存时，必须先调用此工具。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "productName": {"type": "string", "description": "产品名称"},
+                    "price": {"type": "number", "description": "拟修改的单价（不修改则不传）"},
+                    "stock": {"type": "integer", "description": "拟修改的库存（不修改则不传）"},
+                },
+                "required": ["productName"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "order_update_product",
+            "description": "执行产品修改，更新数据库中的单价或库存。应在用户在前端确认后调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "productName": {"type": "string", "description": "产品名称"},
+                    "price": {"type": "number", "description": "新单价（不修改则不传）"},
+                    "stock": {"type": "integer", "description": "新库存（不修改则不传）"},
+                },
+                "required": ["productName"]
+            }
+        }
+    }
+]
 
 # 统一导出
 SKILLS_BY_ROLE = {

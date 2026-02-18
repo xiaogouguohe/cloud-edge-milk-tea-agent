@@ -107,6 +107,12 @@ atexit.register(_stop_services)
 
 def _chat(user_id: str, chat_id: str, message: str, role: str = None, timeout: int = 45, retries: int = 3, verbose: bool = True) -> str:
     """发送聊天请求，返回 reply。系统繁忙时自动重试"""
+    data = _chat_full(user_id, chat_id, message, role, timeout, retries, verbose)
+    return data.get("reply", "")
+
+
+def _chat_full(user_id: str, chat_id: str, message: str, role: str = None, timeout: int = 45, retries: int = 3, verbose: bool = True) -> dict:
+    """发送聊天请求，返回完整响应（含 reply、pending_action 等）"""
     payload = {"message": message, "user_id": user_id, "chat_id": chat_id}
     if role:
         payload["role"] = role
@@ -120,12 +126,14 @@ def _chat(user_id: str, chat_id: str, message: str, role: str = None, timeout: i
             if verbose:
                 print(f"\n  [请求] {message}")
                 print(f"  [实际返回] {reply}")
+                if data.get("pending_action"):
+                    print(f"  [pending_action] {data['pending_action']}")
                 if "session_id" in data:
                     print(f"  [session_id] {data['session_id']}")
             if "系统繁忙" in reply and attempt < retries - 1:
                 time.sleep(3)
                 continue
-            return reply
+            return data
         except Exception as e:
             last_err = e
             if verbose:
@@ -267,6 +275,58 @@ class TestE2EOrder(unittest.TestCase):
         self.assertTrue(
             any(kw in reply for kw in ["订单", "ORDER_", "¥", "成功", "已为您", "总价"]),
             f"应成功下单并告知用户，实际: {reply[:300]}...",
+        )
+
+    def test_product_update_staff(self):
+        """
+        场景：店员修改产品单价/库存
+        1. 店员身份请求修改 → 返回 pending_action
+        2. 直接调用 POST /api/product/update 执行修改（绕过前端确认）
+        3. 查询菜单验证修改生效
+        """
+        user_id = "20001"
+        chat_id = "e2e_product_update"
+
+        print("\n--- 第一步：店员请求修改产品 ---")
+        data = _chat_full(
+            user_id, chat_id,
+            "把云边茉莉的单价改成20元",
+            role="staff",
+        )
+        reply = data.get("reply", "")
+        pending = data.get("pending_action")
+
+        self.assertTrue(
+            pending is not None and pending.get("type") == "product_update",
+            f"应返回 pending_action，实际: {data}",
+        )
+        self.assertEqual(pending.get("productName"), "云边茉莉")
+        self.assertIn("price", pending.get("proposed", {}))
+        self.assertEqual(pending["proposed"]["price"], 20)
+
+        print("\n--- 第二步：直接调用 API 执行修改 ---")
+        resp = requests.post(
+            f"{API_BASE}/product/update",
+            json={"productName": "云边茉莉", "price": 20},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        upd = resp.json()
+        self.assertEqual(upd.get("status"), "success")
+
+        print("\n--- 第三步：查询菜单验证修改生效 ---")
+        verify_data = _chat_full(user_id, chat_id, "云边茉莉多少钱？", role="staff", verbose=True)
+        verify_reply = verify_data.get("reply", "")
+        self.assertTrue(
+            "20" in verify_reply or "¥20" in verify_reply,
+            f"修改后价格应为 20，实际: {verify_reply[:200]}...",
+        )
+
+        # 恢复原价，避免影响其他测试
+        requests.post(
+            f"{API_BASE}/product/update",
+            json={"productName": "云边茉莉", "price": 18},
+            timeout=10,
         )
 
     def test_order_history_query(self):
