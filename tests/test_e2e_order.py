@@ -105,7 +105,7 @@ def _stop_services():
 atexit.register(_stop_services)
 
 
-def _chat(user_id: str, chat_id: str, message: str, role: str = None, timeout: int = 45, retries: int = 3) -> str:
+def _chat(user_id: str, chat_id: str, message: str, role: str = None, timeout: int = 45, retries: int = 3, verbose: bool = True) -> str:
     """发送聊天请求，返回 reply。系统繁忙时自动重试"""
     payload = {"message": message, "user_id": user_id, "chat_id": chat_id}
     if role:
@@ -115,13 +115,22 @@ def _chat(user_id: str, chat_id: str, message: str, role: str = None, timeout: i
         try:
             resp = requests.post(f"{API_BASE}/chat", json=payload, timeout=timeout)
             resp.raise_for_status()
-            reply = resp.json()["reply"]
+            data = resp.json()
+            reply = data.get("reply", "")
+            if verbose:
+                print(f"\n  [请求] {message}")
+                print(f"  [实际返回] {reply}")
+                if "session_id" in data:
+                    print(f"  [session_id] {data['session_id']}")
             if "系统繁忙" in reply and attempt < retries - 1:
                 time.sleep(3)
                 continue
             return reply
         except Exception as e:
             last_err = e
+            if verbose:
+                print(f"\n  [请求] {message}")
+                print(f"  [异常] {e}")
             if attempt < retries - 1:
                 time.sleep(2)
     raise last_err
@@ -171,10 +180,11 @@ class TestE2EOrder(unittest.TestCase):
         全链路：查询所有产品的价格和库存
         无需登录，直接查询即可
         """
+        msg = "有哪些奶茶？我想看看价格和有没有货"
         resp = requests.post(
             f"{API_BASE}/chat",
             json={
-                "message": "有哪些奶茶？我想看看价格和有没有货",
+                "message": msg,
                 "user_id": "e2e_test_user",
                 "chat_id": "e2e_test_chat",
             },
@@ -184,6 +194,8 @@ class TestE2EOrder(unittest.TestCase):
         data = resp.json()
         self.assertIn("reply", data)
         reply = data["reply"]
+        print(f"\n  [请求] {msg}")
+        print(f"  [实际返回] {reply}")
 
         # 验证：应包含价格、库存状态、产品列表
         self.assertTrue(
@@ -205,6 +217,7 @@ class TestE2EOrder(unittest.TestCase):
         """
         user_id = "10001"
         chat_id = "e2e_order_incomplete"
+        print("\n--- 第一轮：缺糖度/冰度 ---")
         # 第一轮：只说产品名，缺糖度、冰度
         reply1 = _chat(user_id, chat_id, "我要一杯云边茉莉", role="customer")
         # 应追问缺失信息（糖度或冰度）
@@ -212,6 +225,7 @@ class TestE2EOrder(unittest.TestCase):
             any(kw in reply1 for kw in ["糖", "甜度", "冰", "冰度", "规格"]),
             f"应追问糖度/冰度，实际: {reply1[:300]}...",
         )
+        print("\n--- 第二轮：补全信息 ---")
         # 第二轮：补全信息
         reply2 = _chat(user_id, chat_id, "少糖去冰", role="customer")
         # 应下单成功，包含订单信息
@@ -227,6 +241,7 @@ class TestE2EOrder(unittest.TestCase):
         """
         user_id = "10002"
         chat_id = "e2e_order_stock"
+        print("\n--- 库存不足场景 ---")
         reply = _chat(
             user_id, chat_id,
             "我要1000杯云边茉莉，少糖去冰",
@@ -243,6 +258,7 @@ class TestE2EOrder(unittest.TestCase):
         """
         user_id = "10003"
         chat_id = "e2e_order_success"
+        print("\n--- 下单成功场景 ---")
         reply = _chat(
             user_id, chat_id,
             "我要一杯云边茉莉，少糖去冰",
@@ -260,6 +276,7 @@ class TestE2EOrder(unittest.TestCase):
         user_id = "10004"
         chat_id = "e2e_order_history"
 
+        print("\n--- 第一步：下单 ---")
         # 先下单
         reply1 = _chat(
             user_id, chat_id,
@@ -271,6 +288,7 @@ class TestE2EOrder(unittest.TestCase):
             f"应先下单成功，实际: {reply1[:300]}...",
         )
 
+        print("\n--- 第二步：查询历史订单 ---")
         # 再查历史订单
         reply2 = _chat(
             user_id, chat_id,

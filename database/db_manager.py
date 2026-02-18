@@ -86,7 +86,7 @@ class DatabaseManager:
             )
         """)
         
-        # 创建产品表
+        # 创建产品表（精简版：id, name, description, price, stock）
         if self.db_type == "sqlite":
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS products (
@@ -94,17 +94,7 @@ class DatabaseManager:
                     name VARCHAR(100) NOT NULL UNIQUE,
                     description TEXT,
                     price DECIMAL(10,2) NOT NULL,
-                    stock INT DEFAULT 0,
-                    shelf_time INT DEFAULT 30,
-                    preparation_time INT DEFAULT 5,
-                    is_seasonal TINYINT DEFAULT 0,
-                    season_start DATE,
-                    season_end DATE,
-                    is_regional TINYINT DEFAULT 0,
-                    available_regions TEXT,
-                    status TINYINT DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    stock INT DEFAULT 0
                 )
             """)
         else:  # MySQL
@@ -114,17 +104,7 @@ class DatabaseManager:
                     name VARCHAR(100) NOT NULL UNIQUE,
                     description TEXT,
                     price DECIMAL(10,2) NOT NULL,
-                    stock INT DEFAULT 0,
-                    shelf_time INT DEFAULT 30,
-                    preparation_time INT DEFAULT 5,
-                    is_seasonal TINYINT DEFAULT 0,
-                    season_start DATE,
-                    season_end DATE,
-                    is_regional TINYINT DEFAULT 0,
-                    available_regions JSON,
-                    status TINYINT DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    stock INT DEFAULT 0
                 )
             """)
         
@@ -258,13 +238,13 @@ class DatabaseManager:
             try:
                 if self.db_type == "sqlite":
                     cursor.execute("""
-                        INSERT INTO products (name, description, price, stock, status)
-                        VALUES (?, ?, ?, ?, 1)
+                        INSERT INTO products (name, description, price, stock)
+                        VALUES (?, ?, ?, ?)
                     """, (name, desc, price, stock))
                 else:
                     cursor.execute("""
-                        INSERT INTO products (name, description, price, stock, status)
-                        VALUES (%s, %s, %s, %s, 1)
+                        INSERT INTO products (name, description, price, stock)
+                        VALUES (%s, %s, %s, %s)
                     """, (name, desc, price, stock))
             except Exception:
                 pass  # 如果已存在则跳过

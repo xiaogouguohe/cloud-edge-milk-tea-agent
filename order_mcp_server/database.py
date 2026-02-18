@@ -130,9 +130,9 @@ class OrderDAO:
             log_backend("decrement_stock", product_name=product_name, quantity=quantity, rows_affected=1, mode="memory")
             return 1  # 内存模式无 products 表，视为成功
         if self.db.db_type == "sqlite":
-            query = "UPDATE products SET stock = stock - ? WHERE name = ? AND status = 1 AND stock >= ?"
+            query = "UPDATE products SET stock = stock - ? WHERE name = ? AND stock >= ?"
         else:
-            query = "UPDATE products SET stock = stock - %s WHERE name = %s AND status = 1 AND stock >= %s"
+            query = "UPDATE products SET stock = stock - %s WHERE name = %s AND stock >= %s"
         cursor = self.db.execute_no_commit(query, (quantity, product_name, quantity))
         rows = cursor.rowcount
         log_backend("decrement_stock", product_name=product_name, quantity=quantity, rows_affected=rows, mode="db")

@@ -31,12 +31,12 @@ def _insert_products(db: DatabaseManager, products: list):
     for name, desc, price, stock in products:
         if db.db_type == "sqlite":
             cursor.execute(
-                "INSERT INTO products (name, description, price, stock, status) VALUES (?, ?, ?, ?, 1)",
+                "INSERT INTO products (name, description, price, stock) VALUES (?, ?, ?, ?)",
                 (name, desc, price, stock),
             )
         else:
             cursor.execute(
-                "INSERT INTO products (name, description, price, stock, status) VALUES (%s, %s, %s, %s, 1)",
+                "INSERT INTO products (name, description, price, stock) VALUES (%s, %s, %s, %s)",
                 (name, desc, price, stock),
             )
     db.connection.commit()

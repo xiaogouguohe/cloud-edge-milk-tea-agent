@@ -246,17 +246,17 @@ class OrderService:
         if not PRODUCT_DB_AVAILABLE or product_db is None:
             # 降级处理：返回模拟数据
             fallback = [
-                {"name": "云边茉莉", "price": 18.00, "stock": 100, "status": 1},
-                {"name": "桂花云露", "price": 20.00, "stock": 80, "status": 1},
-                {"name": "云雾观音", "price": 22.00, "stock": 60, "status": 1},
-                {"name": "珍珠奶茶", "price": 15.00, "stock": 120, "status": 1},
-                {"name": "红豆奶茶", "price": 16.00, "stock": 100, "status": 1}
+                {"name": "云边茉莉", "price": 18.00, "stock": 100},
+                {"name": "桂花云露", "price": 20.00, "stock": 80},
+                {"name": "云雾观音", "price": 22.00, "stock": 60},
+                {"name": "珍珠奶茶", "price": 15.00, "stock": 120},
+                {"name": "红豆奶茶", "price": 16.00, "stock": 100}
             ]
             log_backend("get_all_products", source="fallback_mock", products=[{"name": p["name"], "stock": p["stock"]} for p in fallback])
             return fallback
 
         try:
-            query = "SELECT name, price, stock, status FROM products WHERE status = 1"
+            query = "SELECT name, price, stock FROM products"
             rows = product_db.fetch_all(query)
             log_backend("get_all_products", source="db", products=[{"name": r.get("name"), "stock": r.get("stock")} for r in rows])
             return rows
@@ -288,9 +288,9 @@ class OrderService:
         
         try:
             if product_db.db_type == "sqlite":
-                query = "SELECT price FROM products WHERE name = ? AND status = 1"
+                query = "SELECT price FROM products WHERE name = ?"
             else:
-                query = "SELECT price FROM products WHERE name = %s AND status = 1"
+                query = "SELECT price FROM products WHERE name = %s"
             
             product = product_db.fetch_one(query, (product_name,))
             if product:

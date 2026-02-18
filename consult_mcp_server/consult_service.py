@@ -99,19 +99,17 @@ class ConsultService:
             # 支持按名称、描述搜索
             if self.db.db_type == "sqlite":
                 sql = """
-                    SELECT name, description, price, stock, shelf_time, preparation_time
+                    SELECT name, description, price, stock
                     FROM products
-                    WHERE status = 1
-                    AND (name LIKE ? OR description LIKE ?)
+                    WHERE name LIKE ? OR description LIKE ?
                     LIMIT 10
                 """
                 params = (f"%{query}%", f"%{query}%")
             else:
                 sql = """
-                    SELECT name, description, price, stock, shelf_time, preparation_time
+                    SELECT name, description, price, stock
                     FROM products
-                    WHERE status = 1
-                    AND (name LIKE %s OR description LIKE %s)
+                    WHERE name LIKE %s OR description LIKE %s
                     LIMIT 10
                 """
                 params = (f"%{query}%", f"%{query}%")
@@ -127,9 +125,7 @@ class ConsultService:
                 result_text += f"{i}. {product['name']}\n"
                 result_text += f"   描述: {product['description']}\n"
                 result_text += f"   价格: ¥{product['price']:.2f}\n"
-                result_text += f"   库存: {product['stock']}件\n"
-                result_text += f"   保质期: {product['shelf_time']}分钟\n"
-                result_text += f"   制作时间: {product['preparation_time']}分钟\n\n"
+                result_text += f"   库存: {product['stock']}件\n\n"
             
             return result_text.strip()
         except Exception as e:
@@ -149,9 +145,9 @@ class ConsultService:
         
         try:
             if self.db.db_type == "sqlite":
-                sql = "SELECT * FROM products WHERE status = 1 ORDER BY name"
+                sql = "SELECT * FROM products ORDER BY name"
             else:
-                sql = "SELECT * FROM products WHERE status = 1 ORDER BY name"
+                sql = "SELECT * FROM products ORDER BY name"
             
             products = self.db.fetch_all(sql)
             return products
@@ -174,10 +170,10 @@ class ConsultService:
         
         try:
             if self.db.db_type == "sqlite":
-                sql = "SELECT * FROM products WHERE name = ? AND status = 1"
+                sql = "SELECT * FROM products WHERE name = ?"
                 params = (product_name,)
             else:
-                sql = "SELECT * FROM products WHERE name = %s AND status = 1"
+                sql = "SELECT * FROM products WHERE name = %s"
                 params = (product_name,)
             
             product = self.db.fetch_one(sql, params)
@@ -201,10 +197,10 @@ class ConsultService:
         
         try:
             if self.db.db_type == "sqlite":
-                sql = "SELECT * FROM products WHERE name LIKE ? AND status = 1 ORDER BY name"
+                sql = "SELECT * FROM products WHERE name LIKE ? ORDER BY name"
                 params = (f"%{product_name}%",)
             else:
-                sql = "SELECT * FROM products WHERE name LIKE %s AND status = 1 ORDER BY name"
+                sql = "SELECT * FROM products WHERE name LIKE %s ORDER BY name"
                 params = (f"%{product_name}%",)
             
             products = self.db.fetch_all(sql, params)
@@ -227,6 +223,4 @@ class ConsultService:
 名称: {product.get('name', '')}
 描述: {product.get('description', '')}
 价格: ¥{product.get('price', 0):.2f}
-库存: {product.get('stock', 0)}件
-保质期: {product.get('shelf_time', 30)}分钟
-制作时间: {product.get('preparation_time', 5)}分钟"""
+库存: {product.get('stock', 0)}件"""
