@@ -155,13 +155,18 @@ class OrderMCPServer:
             handler=self._propose_product_update
         )
 
-        # 6. 根据订单 ID 查询订单（店员，可查任意订单）
+        # 6. 根据订单 ID 查询订单详情
+        # 店员：仅传 orderId，可查任意订单
+        # 顾客：传 orderId + userId，仅能查自己的订单
         self.mcp_server.register_tool_func(
             name="order-get-order",
-            description="根据订单ID查询订单详情。店员可查任意订单，顾客只能查自己的。",
+            description="根据订单ID查询订单详情。店员传 orderId 可查任意订单；顾客需传 orderId 和 userId，仅能查自己的订单。",
             parameters={
                 "type": "object",
-                "properties": {"orderId": {"type": "string", "description": "订单ID，如 ORDER_xxx"}},
+                "properties": {
+                    "orderId": {"type": "string", "description": "订单ID，如 ORDER_xxx"},
+                    "userId": {"type": "integer", "description": "用户ID，顾客查自己订单时必传"}
+                },
                 "required": ["orderId"]
             },
             handler=self._get_order
@@ -218,12 +223,17 @@ class OrderMCPServer:
         except Exception as e:
             return f"创建订单失败: {str(e)}"
 
-    def _get_order(self, orderId: str) -> str:
-        """工具：根据订单 ID 查询订单详情"""
+    def _get_order(self, orderId: str, userId: int = None) -> str:
+        """工具：根据订单 ID 查询订单详情。userId 存在时仅返回属于该用户的订单"""
         try:
-            order = self.order_service.get_order(orderId)
-            if not order:
-                return f"未找到订单「{orderId}」，请确认订单号是否正确。"
+            if userId is not None:
+                order = self.order_service.get_order_by_user(userId, orderId)
+                if not order:
+                    return f"未找到订单「{orderId}」，或该订单不属于您。"
+            else:
+                order = self.order_service.get_order(orderId)
+                if not order:
+                    return f"未找到订单「{orderId}」，请确认订单号是否正确。"
             return self.order_service.format_order_response(order)
         except Exception as e:
             return f"查询订单失败: {str(e)}"
@@ -238,6 +248,8 @@ class OrderMCPServer:
             for order in orders:
                 result += self.order_service.format_order_response(order) + "\n\n"
             return result
+        except ValueError as e:
+            return str(e)
         except Exception as e:
             return f"获取订单列表失败: {str(e)}"
 

@@ -50,6 +50,21 @@ CUSTOMER_SKILLS = BASE_SKILLS + [
     {
         "type": "function",
         "function": {
+            "name": "order_get_order",
+            "description": "根据订单ID查询订单详情。顾客只能查自己的订单，需传入 userId 和 orderId。当用户询问「订单 ORDER_xxx 的详情」时使用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orderId": {"type": "string", "description": "订单ID，如 ORDER_xxx"},
+                    "userId": {"type": "integer", "description": "用户ID"}
+                },
+                "required": ["orderId", "userId"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "order_create_order",
             "description": "创建奶茶订单。当用户想要下单、点单或购买时使用此工具。同一产品若糖度或冰量不同，需拆成多条 items（每条对应一种规格）。",
             "parameters": {

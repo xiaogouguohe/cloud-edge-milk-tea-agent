@@ -76,14 +76,20 @@ class OrderService:
     
     def get_orders_by_user(self, user_id: int) -> List[Dict]:
         """
-        获取用户的所有订单
+        获取用户的所有订单。
+        若用户不存在（users 表中无记录），抛出 ValueError。
         
         Args:
             user_id: 用户ID
             
         Returns:
             订单列表
+            
+        Raises:
+            ValueError: 用户不存在时
         """
+        if not self.order_dao.use_memory and not self.order_dao.user_exists(user_id):
+            raise ValueError(f"用户 {user_id} 不存在")
         return self.order_dao.get_orders_by_user(user_id)
     
     def create_order(self, user_id: int, items: List[Dict]) -> Dict:

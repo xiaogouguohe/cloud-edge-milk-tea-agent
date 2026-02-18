@@ -82,6 +82,7 @@ class OrderAgent:
    - 支持用户在后续对话中直接补充信息（如只说“半糖”），请结合历史对话完成下单。
 3. 如果信息齐全（产品名、糖度、冰度、数量），必须调用 order_create_order 工具，不得跳过或编造结果。同一产品若糖度或冰量不同（如「一杯少糖去冰、一杯标准糖少冰」），需拆成多条 items，每条对应一种规格。
 4. 当用户询问「我的订单」「订单记录」「历史订单」时，调用 order_get_orders_by_user 工具查询。
+5. 当用户询问「订单 ORDER_xxx 的详情」「查订单 xxx」时，调用 order_get_order 工具，必须传入 orderId 和 userId。
 5. 整合工具返回的结果，生成友好的回复。回复中的订单信息必须来自工具返回，不得虚构。
 
 约束:
@@ -253,6 +254,9 @@ class OrderAgent:
                                 messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": content})
                                 continue
                             if "userId" in arguments:
+                                arguments["userId"] = int(user_id)
+                            # order_get_order 顾客必须传 userId
+                            if skill_name == "order_get_order":
                                 arguments["userId"] = int(user_id)
 
                         # 参数规范化：LLM 可能输出扁平格式，需转为 items 数组

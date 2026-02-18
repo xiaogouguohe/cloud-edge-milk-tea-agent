@@ -97,6 +97,19 @@ class OrderDAO:
         order["items"] = self.get_order_items(order_id)
         return order
     
+    def user_exists(self, user_id: int) -> bool:
+        """
+        检查用户是否存在（用于区分「用户不存在」与「用户无订单」）
+        内存模式下无法区分，默认返回 True
+        """
+        if self.use_memory:
+            return True
+        if self.db.db_type == "sqlite":
+            row = self.db.fetch_one("SELECT 1 FROM users WHERE id = ?", (user_id,))
+        else:
+            row = self.db.fetch_one("SELECT 1 FROM users WHERE id = %s", (user_id,))
+        return row is not None
+
     def get_orders_by_user(self, user_id: int) -> List[Dict]:
         """
         根据用户ID查询所有订单（包含订单项）

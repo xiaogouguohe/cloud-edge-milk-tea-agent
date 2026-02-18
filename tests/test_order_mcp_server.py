@@ -94,6 +94,7 @@ class TestOrderMCPServer(unittest.TestCase):
         self.assertIn("order-get-menu", tool_names)
         self.assertIn("order-get-product-info", tool_names)
         self.assertIn("order-get-orders-by-user", tool_names)
+        self.assertIn("order-get-order", tool_names)
         self.assertIn("order-propose-product-update", tool_names)
         self.assertIn("order-update-product", tool_names)
 
@@ -353,7 +354,7 @@ class TestOrderMCPServer(unittest.TestCase):
         self.assertIn("20001", result)
 
     def test_get_orders_by_user_empty(self):
-        """测试：用户无订单时返回空提示"""
+        """测试：用户无订单时返回空提示（或用户不存在）"""
         self._prepare_products(TEST_PRODUCTS_MENU)
         r = self.client.post(
             "/mcp/tools/order-get-orders-by-user/invoke",
@@ -364,8 +365,113 @@ class TestOrderMCPServer(unittest.TestCase):
         data = r.get_json()
         self.assertEqual(data["status"], "success")
         result = data.get("result", "")
-        self.assertIn("没有", result)
+        self.assertTrue(
+            any(kw in result for kw in ["没有", "不存在"]),
+            f"应提示无订单或用户不存在，实际: {result}",
+        )
         self.assertIn("99999", result)
+
+    def test_get_order_by_id_staff(self):
+        """测试：店员根据订单ID查询任意订单"""
+        self._prepare_products(TEST_PRODUCTS_MENU)
+        # 先下单
+        r1 = self.client.post(
+            "/mcp/tools/order-create-order/invoke",
+            json={
+                "parameters": {
+                    "userId": 30001,
+                    "items": [{"productName": "云边茉莉", "sweetness": "少糖", "iceLevel": "去冰", "quantity": 1}],
+                }
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(r1.status_code, 200)
+        result1 = r1.get_json().get("result", "")
+        self.assertIn("ORDER_", result1)
+        import re
+        match = re.search(r"ORDER_\d+", result1)
+        self.assertIsNotNone(match)
+        order_id = match.group()
+
+        # 店员查订单（不传 userId）
+        r2 = self.client.post(
+            "/mcp/tools/order-get-order/invoke",
+            json={"parameters": {"orderId": order_id}},
+            content_type="application/json",
+        )
+        self.assertEqual(r2.status_code, 200)
+        result2 = r2.get_json().get("result", "")
+        self.assertIn(order_id, result2)
+        self.assertIn("云边茉莉", result2)
+
+    def test_get_order_by_id_not_found(self):
+        """测试：查询不存在的订单"""
+        self._prepare_products(TEST_PRODUCTS_MENU)
+        r = self.client.post(
+            "/mcp/tools/order-get-order/invoke",
+            json={"parameters": {"orderId": "ORDER_9999999999999"}},
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        result = r.get_json().get("result", "")
+        self.assertIn("未找到", result)
+
+    def test_get_order_by_id_customer_own(self):
+        """测试：顾客查自己的订单"""
+        self._prepare_products(TEST_PRODUCTS_MENU)
+        r1 = self.client.post(
+            "/mcp/tools/order-create-order/invoke",
+            json={
+                "parameters": {
+                    "userId": 30002,
+                    "items": [{"productName": "桂花云露", "sweetness": "半糖", "iceLevel": "少冰", "quantity": 1}],
+                }
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(r1.status_code, 200)
+        import re
+        match = re.search(r"ORDER_\d+", r1.get_json().get("result", ""))
+        order_id = match.group()
+
+        r2 = self.client.post(
+            "/mcp/tools/order-get-order/invoke",
+            json={"parameters": {"orderId": order_id, "userId": 30002}},
+            content_type="application/json",
+        )
+        self.assertEqual(r2.status_code, 200)
+        result2 = r2.get_json().get("result", "")
+        self.assertIn(order_id, result2)
+        self.assertIn("桂花云露", result2)
+
+    def test_get_order_by_id_customer_others_denied(self):
+        """测试：顾客查他人订单应被拒绝"""
+        self._prepare_products(TEST_PRODUCTS_MENU)
+        r1 = self.client.post(
+            "/mcp/tools/order-create-order/invoke",
+            json={
+                "parameters": {
+                    "userId": 30003,
+                    "items": [{"productName": "云边茉莉", "sweetness": "少糖", "iceLevel": "去冰", "quantity": 1}],
+                }
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(r1.status_code, 200)
+        import re
+        match = re.search(r"ORDER_\d+", r1.get_json().get("result", ""))
+        order_id = match.group()
+
+        # 用户 30004 尝试查用户 30003 的订单
+        r2 = self.client.post(
+            "/mcp/tools/order-get-order/invoke",
+            json={"parameters": {"orderId": order_id, "userId": 30004}},
+            content_type="application/json",
+        )
+        self.assertEqual(r2.status_code, 200)
+        result2 = r2.get_json().get("result", "")
+        self.assertIn("未找到", result2)
+        self.assertTrue("不属于" in result2 or "未找到" in result2)
 
 
 if __name__ == "__main__":
