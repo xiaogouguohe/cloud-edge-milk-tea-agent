@@ -187,49 +187,7 @@ class DatabaseManager:
             """)
         
         self.connection.commit()
-        self._init_products()  # 表为空时初始化产品（云边茉莉 stock=100，便于 E2E 库存不足测试）
-    
-    def _init_products(self):
-        """初始化产品数据"""
-        cursor = self.connection.cursor()
-        
-        # 检查是否已有产品数据
-        if self.db_type == "sqlite":
-            cursor.execute("SELECT COUNT(*) as count FROM products")
-        else:
-            cursor.execute("SELECT COUNT(*) as count FROM products")
-        
-        result = cursor.fetchone()
-        count = result[0] if isinstance(result, dict) else result['count'] if hasattr(result, '__getitem__') else 0
-        
-        if count > 0:
-            return  # 已有数据，不重复插入
-        
-        # 插入默认产品
-        products = [
-            ("云边茉莉", "优质茉莉花茶，清香淡雅", 18.00, 100),
-            ("桂花云露", "桂花乌龙茶，香气浓郁", 20.00, 80),
-            ("云雾观音", "铁观音茶，回甘悠长", 22.00, 60),
-            ("珍珠奶茶", "经典珍珠奶茶", 15.00, 120),
-            ("红豆奶茶", "红豆奶茶，香甜可口", 16.00, 100),
-        ]
-        
-        for name, desc, price, stock in products:
-            try:
-                if self.db_type == "sqlite":
-                    cursor.execute("""
-                        INSERT INTO products (name, description, price, stock)
-                        VALUES (?, ?, ?, ?)
-                    """, (name, desc, price, stock))
-                else:
-                    cursor.execute("""
-                        INSERT INTO products (name, description, price, stock)
-                        VALUES (%s, %s, %s, %s)
-                    """, (name, desc, price, stock))
-            except Exception:
-                pass  # 如果已存在则跳过
-        
-        self.connection.commit()
+        # 不再初始化产品数据，由测试或业务自行写入
     
     def execute(self, query: str, params: tuple = None) -> Any:
         """执行 SQL 查询（自动提交）"""

@@ -4,6 +4,7 @@
 链路：POST /api/chat → SupervisorAgent → OrderAgent (A2A) → Order MCP Server
 
 测试会自动启动所需服务（若未运行），结束后自动清理。
+测试用例自行往数据库写入产品数据，不依赖启动时的初始库存。
 
 运行方式：
   python3 -m unittest tests.test_e2e_order -v
@@ -24,6 +25,59 @@ sys.path.insert(0, str(project_root))
 import requests
 
 API_BASE = "http://localhost:8000/api"
+
+# E2E 测试用产品数据：(name, description, price, stock)
+E2E_PRODUCTS_FULL = [
+    ("云边茉莉", "优质茉莉花茶", 18.00, 100),
+    ("桂花云露", "桂花乌龙茶", 20.00, 80),
+    ("云雾观音", "铁观音茶", 22.00, 60),
+    ("珍珠奶茶", "经典珍珠奶茶", 15.00, 120),
+    ("红豆奶茶", "红豆奶茶", 16.00, 100),
+]
+E2E_PRODUCTS_JASMINE = [("云边茉莉", "优质茉莉花茶", 18.00, 100)]
+E2E_PRODUCTS_LOW_STOCK = [("云边茉莉", "优质茉莉花茶", 18.00, 5)]  # 库存不足场景
+E2E_PRODUCTS_OSMANTHUS = [("桂花云露", "桂花乌龙茶", 20.00, 80)]
+
+
+def _get_e2e_db():
+    """获取与 MCP Server 相同的数据库连接（供 E2E 写入测试数据）"""
+    try:
+        from database.db_manager import DatabaseManager
+        from database.config import DB_TYPE, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+        if DB_TYPE == "mysql":
+            return DatabaseManager(
+                db_type="mysql",
+                host=MYSQL_HOST,
+                port=MYSQL_PORT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE,
+            )
+        return DatabaseManager(db_type="sqlite")
+    except Exception as e:
+        raise RuntimeError(f"E2E 无法连接数据库: {e}") from e
+
+
+def _prepare_e2e_products(products: list):
+    """清空 products 表并插入指定数据，供 E2E 用例使用。先删 order_items/orders 以解除外键约束。"""
+    db = _get_e2e_db()
+    db.execute("DELETE FROM order_items")
+    db.execute("DELETE FROM orders")
+    db.execute("DELETE FROM products")
+    db.connection.commit()
+    cursor = db.connection.cursor()
+    for name, desc, price, stock in products:
+        if db.db_type == "sqlite":
+            cursor.execute(
+                "INSERT INTO products (name, description, price, stock) VALUES (?, ?, ?, ?)",
+                (name, desc, price, stock),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO products (name, description, price, stock) VALUES (%s, %s, %s, %s)",
+                (name, desc, price, stock),
+            )
+    db.connection.commit()
 
 # 服务配置：(health_url, 启动命令, 描述)，使用当前 Python 解释器
 def _services():
@@ -188,6 +242,7 @@ class TestE2EOrder(unittest.TestCase):
         全链路：查询所有产品的价格和库存
         无需登录，直接查询即可
         """
+        _prepare_e2e_products(E2E_PRODUCTS_FULL)
         msg = "有哪些奶茶？我想看看价格和有没有货"
         resp = requests.post(
             f"{API_BASE}/chat",
@@ -223,6 +278,7 @@ class TestE2EOrder(unittest.TestCase):
         """
         场景1：下单若干产品，信息没给完全 → 用户补全 → 成功下单
         """
+        _prepare_e2e_products(E2E_PRODUCTS_JASMINE)
         user_id = "10001"
         chat_id = "e2e_order_incomplete"
         print("\n--- 第一轮：缺糖度/冰度 ---")
@@ -247,6 +303,7 @@ class TestE2EOrder(unittest.TestCase):
         场景2：下单若干产品，库存不足 → 告知用户
         通过下单数量超过库存（如 1000 杯）触发
         """
+        _prepare_e2e_products(E2E_PRODUCTS_LOW_STOCK)  # 库存仅 5
         user_id = "10002"
         chat_id = "e2e_order_stock"
         print("\n--- 库存不足场景 ---")
@@ -264,6 +321,7 @@ class TestE2EOrder(unittest.TestCase):
         """
         场景3：下单若干产品，成功 → 告知用户
         """
+        _prepare_e2e_products(E2E_PRODUCTS_JASMINE)
         user_id = "10003"
         chat_id = "e2e_order_success"
         print("\n--- 下单成功场景 ---")
@@ -284,6 +342,7 @@ class TestE2EOrder(unittest.TestCase):
         2. 直接调用 POST /api/product/update 执行修改（绕过前端确认）
         3. 查询菜单验证修改生效
         """
+        _prepare_e2e_products(E2E_PRODUCTS_JASMINE)
         user_id = "20001"
         chat_id = "e2e_product_update"
 
@@ -333,6 +392,7 @@ class TestE2EOrder(unittest.TestCase):
         """
         场景4：先下单，再查询历史订单
         """
+        _prepare_e2e_products(E2E_PRODUCTS_OSMANTHUS)
         user_id = "10004"
         chat_id = "e2e_order_history"
 
