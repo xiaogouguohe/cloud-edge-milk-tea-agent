@@ -155,10 +155,14 @@ class OrderMCPServer:
     def _create_order(self, userId: int, items: list) -> str:
         """工具：创建订单"""
         try:
+            print(f"[OrderMCPServer] create_order: userId={userId}, items={items}", file=sys.stderr, flush=True)
             order = self.order_service.create_order(user_id=userId, items=items)
+            print(f"[OrderMCPServer] 订单创建成功: {order.get('order_id', '')}", file=sys.stderr, flush=True)
             return self.order_service.format_order_response(order)
         except Exception as e:
-            return f"创建订单失败: {str(e)}"
+            err_msg = f"创建订单失败: {str(e)}"
+            print(f"[OrderMCPServer] 创建订单失败: {err_msg}", file=sys.stderr, flush=True)
+            return err_msg
 
     def _get_orders_by_user(self, userId: int) -> str:
         """工具：获取用户订单列表"""

@@ -165,8 +165,48 @@ class TestOrderAgent(unittest.TestCase):
         print(f"✅ 多轮下单测试通过 (成功从历史中找回产品名并下单)")
 
     # =================================================================
-    # 后续功能预留位置 (查询历史订单等)
+    # 3. 历史订单查询 (order_get_orders_by_user)
     # =================================================================
+
+    @patch('order_agent.order_agent.OrderAgent._invoke_tool')
+    def test_get_orders_by_user(self, mock_invoke):
+        """测试：查询用户历史订单"""
+        mock_invoke.return_value = (
+            "用户 12345 的订单列表（共 2 条）:\n\n"
+            "订单ID: ORDER_001 | 总价: ¥36.00 | 状态: UNPAID\n"
+            "  - 云边茉莉 x2 半糖去冰 ¥36.00\n\n"
+            "订单ID: ORDER_002 | 总价: ¥20.00 | 状态: UNPAID\n"
+            "  - 桂花云露 x1 少糖少冰 ¥20.00"
+        )
+        query = "帮我查一下我的订单记录"
+        print(f"\n[测试] 历史订单查询 - 输入: '{query}'")
+
+        result = self.agent.chat(query, self.user_id, role="customer")
+
+        print(f"Agent 回复: {result['output']}")
+        self.assertTrue(mock_invoke.called)
+        self.assertEqual(mock_invoke.call_args[0][0], "order-get-orders-by-user")
+        args = mock_invoke.call_args[0][2]
+        self.assertEqual(args.get("userId"), self.user_id)
+        self.assertIn("订单", result["output"])
+        print("✅ 历史订单查询测试通过")
+
+    @patch('order_agent.order_agent.OrderAgent._invoke_tool')
+    def test_get_orders_by_user_empty(self, mock_invoke):
+        """测试：用户无订单时的回复"""
+        mock_invoke.return_value = "用户 12345 当前没有任何订单记录。"
+        query = "我的历史订单有哪些？"
+        print(f"\n[测试] 无订单场景 - 输入: '{query}'")
+
+        result = self.agent.chat(query, self.user_id, role="customer")
+
+        print(f"Agent 回复: {result['output']}")
+        self.assertTrue(mock_invoke.called)
+        self.assertTrue(
+            any(kw in result["output"] for kw in ["没有", "无", "空", "暂无"]),
+            "无订单时应给出合理提示",
+        )
+        print("✅ 无订单场景测试通过")
 
 if __name__ == "__main__":
     unittest.main()

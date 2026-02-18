@@ -38,6 +38,18 @@ CUSTOMER_SKILLS = BASE_SKILLS + [
     {
         "type": "function",
         "function": {
+            "name": "order_get_orders_by_user",
+            "description": "查询用户的历史订单列表。当用户询问「我的订单」「订单记录」「历史订单」「查订单」时使用此工具。",
+            "parameters": {
+                "type": "object",
+                "properties": {"userId": {"type": "integer", "description": "用户ID"}},
+                "required": ["userId"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "order_create_order",
             "description": "创建奶茶订单。当用户想要下单、点单或购买时使用此工具。",
             "parameters": {

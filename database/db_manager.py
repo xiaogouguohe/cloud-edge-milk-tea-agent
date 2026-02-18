@@ -227,7 +227,7 @@ class DatabaseManager:
             """)
         
         self.connection.commit()
-        # self._init_products()  # 注释掉，避免每次创建表都初始化产品
+        self._init_products()  # 表为空时初始化产品（云边茉莉 stock=100，便于 E2E 库存不足测试）
     
     def _init_products(self):
         """初始化产品数据"""
@@ -272,7 +272,7 @@ class DatabaseManager:
         self.connection.commit()
     
     def execute(self, query: str, params: tuple = None) -> Any:
-        """执行 SQL 查询"""
+        """执行 SQL 查询（自动提交）"""
         cursor = self.connection.cursor()
         if params:
             cursor.execute(query, params)
@@ -280,6 +280,28 @@ class DatabaseManager:
             cursor.execute(query)
         self.connection.commit()
         return cursor
+
+    def execute_no_commit(self, query: str, params: tuple = None) -> Any:
+        """执行 SQL 查询（不提交，用于事务内）"""
+        cursor = self.connection.cursor()
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        return cursor
+
+    def run_transaction(self, callback):
+        """
+        在事务中执行回调。成功则提交，异常则回滚。
+        callback(db) 中应使用 db.execute_no_commit() 执行操作。
+        """
+        try:
+            result = callback(self)
+            self.connection.commit()
+            return result
+        except Exception:
+            self.connection.rollback()
+            raise
     
     def fetch_one(self, query: str, params: tuple = None) -> Optional[Dict]:
         """执行查询并返回一条记录"""

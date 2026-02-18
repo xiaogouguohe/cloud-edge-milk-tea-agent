@@ -79,6 +79,12 @@ class MCPClient:
                 timeout=timeout,
                 headers={"Content-Type": "application/json"}
             )
+            if response.status_code == 404:
+                try:
+                    data = response.json()
+                    return {"status": "error", "error": data.get("error", f"Tool {tool_name} not found")}
+                except Exception:
+                    return {"status": "error", "error": f"Tool {tool_name} not found (404)"}
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:

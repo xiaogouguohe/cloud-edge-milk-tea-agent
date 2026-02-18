@@ -119,6 +119,20 @@ class OrderDAO:
             order["items"] = self.get_order_items(order["order_id"])
         return orders
     
+    def decrement_stock(self, product_name: str, quantity: int) -> int:
+        """
+        原子扣减库存。使用 UPDATE ... WHERE stock >= quantity 防止超卖。
+        Returns: 影响行数，0 表示库存不足或产品不存在
+        """
+        if self.use_memory:
+            return 1  # 内存模式无 products 表，视为成功
+        if self.db.db_type == "sqlite":
+            query = "UPDATE products SET stock = stock - ? WHERE name = ? AND status = 1 AND stock >= ?"
+        else:
+            query = "UPDATE products SET stock = stock - %s WHERE name = %s AND status = 1 AND stock >= %s"
+        cursor = self.db.execute_no_commit(query, (quantity, product_name, quantity))
+        return cursor.rowcount
+
     def create_order(self, order_data: Dict) -> Dict:
         """
         创建订单主记录
@@ -158,10 +172,7 @@ class OrderDAO:
         
         print(f"[OrderDAO] 准备插入订单 - order_id: {order_data['order_id']}, user_id: {order_data['user_id']}")
         cursor = self.db.execute(query, params)
-        # execute 方法已经自动提交，但为了确保，再次提交
-        if hasattr(self.db, 'connection'):
-            self.db.connection.commit()
-            print(f"[OrderDAO] 事务已提交")
+        print(f"[OrderDAO] 事务已提交")
         
         # 立即查询验证
         result = self.get_order_by_id(order_data["order_id"])
@@ -213,9 +224,45 @@ class OrderDAO:
         )
         
         self.db.execute(query, params)
-        if hasattr(self.db, 'connection'):
-            self.db.connection.commit()
         return item_data
+
+    def _create_order_tx(self, order_data: Dict) -> Dict:
+        """事务内插入订单主记录（不提交）"""
+        if self.db.db_type == "sqlite":
+            query = """INSERT INTO orders 
+                       (order_id, user_id, total_price, status, remark, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)"""
+        else:
+            query = """INSERT INTO orders 
+                       (order_id, user_id, total_price, status, remark, created_at, updated_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)"""
+        params = (
+            order_data["order_id"], order_data["user_id"], order_data["total_price"],
+            order_data.get("status", "UNPAID"), order_data.get("remark", ""),
+            datetime.now(), datetime.now()
+        )
+        self.db.execute_no_commit(query, params)
+        return {**order_data, "items": []}
+
+    def _create_order_item_tx(self, item_data: Dict) -> None:
+        """事务内插入订单项（不提交）"""
+        if self.db.db_type == "sqlite":
+            query = """INSERT INTO order_items
+                       (order_id, product_id, product_name, sweetness, ice_level,
+                        quantity, unit_price, item_price, remark, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+        else:
+            query = """INSERT INTO order_items
+                       (order_id, product_id, product_name, sweetness, ice_level,
+                        quantity, unit_price, item_price, remark, created_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        params = (
+            item_data["order_id"], item_data.get("product_id", 0), item_data["product_name"],
+            item_data["sweetness"], item_data["ice_level"], item_data["quantity"],
+            item_data["unit_price"], item_data["item_price"], item_data.get("remark", ""),
+            datetime.now()
+        )
+        self.db.execute_no_commit(query, params)
     
     def get_order_items(self, order_id: str) -> List[Dict]:
         """

@@ -88,32 +88,35 @@ class OrderService:
     def create_order(self, user_id: int, items: List[Dict], remark: Optional[str] = None) -> Dict:
         """
         创建订单（支持多产品）
-        
-        Args:
-            user_id: 用户ID
-            items: 订单项列表，每个项包含 productName, sweetness, iceLevel, quantity, remark
-            remark: 订单整体备注
-            
-        Returns:
-            创建的订单信息
+        工业级流程：事务内原子扣减库存 + 写订单，防止超卖
         """
         order_id = f"ORDER_{int(datetime.now().timestamp() * 1000)}"
         total_price = 0.0
         processed_items = []
-        
+
         for item_data in items:
             product_name = item_data["productName"]
             quantity = item_data.get("quantity", 1)
             sweetness_num = self._convert_sweetness_str_to_int(item_data.get("sweetness", "标准糖"))
             ice_level_num = self._convert_ice_level_str_to_int(item_data.get("iceLevel", "正常冰"))
-            
+
             unit_price = self._get_product_price(product_name)
             if unit_price is None:
                 raise ValueError(f"产品不存在: {product_name}")
-            
+
+            # 预检查库存（快速失败，数据库模式下事务内会再次原子校验）
+            product_info = self.get_product_info(product_name)
+            stock = product_info.get("stock", 0) if product_info else 0
+            if product_info is None:
+                print(f"[OrderService] 产品不存在: {product_name}, get_all_products 可能为空", file=sys.stderr, flush=True)
+            else:
+                print(f"[OrderService] 库存检查: {product_name} 当前库存={stock}, 需要={quantity}", file=sys.stderr, flush=True)
+            if stock < quantity:
+                raise ValueError(f"产品「{product_name}」库存不足，当前库存: {stock}，需要: {quantity}")
+
             item_price = unit_price * quantity
             total_price += item_price
-            
+
             processed_item = {
                 "order_id": order_id,
                 "product_name": product_name,
@@ -125,21 +128,37 @@ class OrderService:
                 "remark": item_data.get("remark", "")
             }
             processed_items.append(processed_item)
-        
+
         order_data = {
             "order_id": order_id,
             "user_id": user_id,
             "total_price": float(total_price),
             "remark": remark or "",
-            "status": "UNPAID"  # 默认状态
+            "status": "UNPAID"
         }
-        created_order = self.order_dao.create_order(order_data)
-        
-        # 创建每个订单项
-        for item in processed_items:
-            self.order_dao.create_order_item(item)
-        
-        created_order["items"] = processed_items
+
+        if self.order_dao.use_memory:
+            # 内存模式：无 products 表，仅写订单
+            created_order = self.order_dao.create_order(order_data)
+            for item in processed_items:
+                self.order_dao.create_order_item(item)
+        else:
+            # 数据库模式：事务内原子扣库存 + 写订单
+            def _tx(db):
+                for item in processed_items:
+                    rows = self.order_dao.decrement_stock(item["product_name"], item["quantity"])
+                    if rows == 0:
+                        raise ValueError(
+                            f"产品「{item['product_name']}」库存不足或已被占用，请稍后重试"
+                        )
+                self.order_dao._create_order_tx(order_data)
+                for item in processed_items:
+                    self.order_dao._create_order_item_tx(item)
+
+            self.order_dao.db.run_transaction(_tx)
+            created_order = {**order_data, "items": processed_items}
+
+        created_order.setdefault("items", processed_items)
         return created_order
     
     def delete_order(self, user_id: int, order_id: str) -> bool:

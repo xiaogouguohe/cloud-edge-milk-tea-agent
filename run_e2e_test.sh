@@ -38,6 +38,16 @@ echo "全链路 E2E 测试"
 echo "=========================================="
 echo ""
 
+# 强制重启：先停止占用端口的旧进程，确保加载最新代码
+echo "检查并清理旧服务进程..."
+for port in 10002 10006 8000; do
+    if lsof -ti:$port >/dev/null 2>&1; then
+        echo "  停止端口 $port 上的进程..."
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+        sleep 2
+    fi
+done
+
 # 1. 启动 Order MCP Server
 if ! curl -s http://localhost:10002/mcp/health >/dev/null 2>&1; then
     echo "启动 Order MCP Server (10002)..."
