@@ -4,6 +4,8 @@ MCP Server - 提供工具给 Agent 使用
 from flask import Flask, request, jsonify
 from typing import Dict, List
 from .tool import Tool, ToolDefinition
+from .request_context import set_request_id
+from .access_logger import log_access
 
 
 class MCPServer:
@@ -40,25 +42,21 @@ class MCPServer:
         @self.app.route('/mcp/tools/<tool_name>/invoke', methods=['POST'])
         def invoke_tool(tool_name: str):
             """调用工具"""
+            request_id = set_request_id()
+            data = request.json or {}
+            parameters = data.get("parameters", {})
+
             if tool_name not in self.tools:
+                log_access(tool_name, parameters, status="error", error=f"Tool {tool_name} not found")
                 return jsonify({
                     "error": f"Tool {tool_name} not found",
                     "status": "error"
                 }), 404
-            
+
             try:
-                data = request.json or {}
-                parameters = data.get("parameters", {})
-                
-                print(f"[MCPServer] 调用工具: {tool_name}")
-                print(f"[MCPServer] 参数: {parameters}")
-                
-                # 调用工具
                 tool = self.tools[tool_name]
                 result = tool.invoke(parameters)
-                
-                print(f"[MCPServer] 工具执行结果: {result[:200] if isinstance(result, str) and len(result) > 200 else result}")
-                
+                log_access(tool_name, parameters, status="success", result=result)
                 return jsonify({
                     "result": result,
                     "status": "success"
@@ -66,7 +64,7 @@ class MCPServer:
             except Exception as e:
                 import traceback
                 error_msg = str(e)
-                print(f"[MCPServer] 工具调用异常: {error_msg}")
+                log_access(tool_name, parameters, status="error", error=error_msg)
                 traceback.print_exc()
                 return jsonify({
                     "error": error_msg,

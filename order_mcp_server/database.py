@@ -10,6 +10,8 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from order_mcp_server.mcp_logger import log_backend
+
 # 尝试导入数据库管理器
 try:
     from database.db_manager import DatabaseManager
@@ -125,13 +127,16 @@ class OrderDAO:
         Returns: 影响行数，0 表示库存不足或产品不存在
         """
         if self.use_memory:
+            log_backend("decrement_stock", product_name=product_name, quantity=quantity, rows_affected=1, mode="memory")
             return 1  # 内存模式无 products 表，视为成功
         if self.db.db_type == "sqlite":
             query = "UPDATE products SET stock = stock - ? WHERE name = ? AND status = 1 AND stock >= ?"
         else:
             query = "UPDATE products SET stock = stock - %s WHERE name = %s AND status = 1 AND stock >= %s"
         cursor = self.db.execute_no_commit(query, (quantity, product_name, quantity))
-        return cursor.rowcount
+        rows = cursor.rowcount
+        log_backend("decrement_stock", product_name=product_name, quantity=quantity, rows_affected=rows, mode="db")
+        return rows
 
     def create_order(self, order_data: Dict) -> Dict:
         """
@@ -170,16 +175,13 @@ class OrderDAO:
             datetime.now()
         )
         
-        print(f"[OrderDAO] 准备插入订单 - order_id: {order_data['order_id']}, user_id: {order_data['user_id']}")
+        log_backend("db_insert_order", order_id=order_data["order_id"], user_id=order_data["user_id"])
         cursor = self.db.execute(query, params)
-        print(f"[OrderDAO] 事务已提交")
-        
-        # 立即查询验证
         result = self.get_order_by_id(order_data["order_id"])
         if result:
-            print(f"[OrderDAO] 订单查询成功 - order_id: {result.get('order_id')}")
+            log_backend("db_insert_order_ok", order_id=order_data["order_id"])
         else:
-            print(f"[OrderDAO] ⚠️  订单查询失败 - 订单未找到")
+            log_backend("db_insert_order_fail", order_id=order_data["order_id"], reason="order_not_found_after_insert")
         return result
     
     def create_order_item(self, item_data: Dict) -> Dict:
@@ -242,6 +244,7 @@ class OrderDAO:
             datetime.now(), datetime.now()
         )
         self.db.execute_no_commit(query, params)
+        log_backend("db_insert_order_tx", order_id=order_data["order_id"], user_id=order_data["user_id"])
         return {**order_data, "items": []}
 
     def _create_order_item_tx(self, item_data: Dict) -> None:
@@ -263,7 +266,8 @@ class OrderDAO:
             datetime.now()
         )
         self.db.execute_no_commit(query, params)
-    
+        log_backend("db_insert_order_item_tx", order_id=item_data["order_id"], product_name=item_data["product_name"], quantity=item_data["quantity"])
+
     def get_order_items(self, order_id: str) -> List[Dict]:
         """
         获取订单的所有订单项

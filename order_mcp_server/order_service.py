@@ -12,6 +12,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from order_mcp_server.database import OrderDAO
+from order_mcp_server.mcp_logger import log_backend
 
 # 尝试导入数据库管理器
 try:
@@ -107,11 +108,11 @@ class OrderService:
             # 预检查库存（快速失败，数据库模式下事务内会再次原子校验）
             product_info = self.get_product_info(product_name)
             stock = product_info.get("stock", 0) if product_info else 0
+            log_backend("get_product_info", product_name=product_name, stock=stock, quantity=quantity, product_found=product_info is not None)
             if product_info is None:
-                print(f"[OrderService] 产品不存在: {product_name}, get_all_products 可能为空", file=sys.stderr, flush=True)
-            else:
-                print(f"[OrderService] 库存检查: {product_name} 当前库存={stock}, 需要={quantity}", file=sys.stderr, flush=True)
+                log_backend("stock_check_fail", product_name=product_name, reason="product_not_found")
             if stock < quantity:
+                log_backend("stock_check_fail", product_name=product_name, stock=stock, quantity=quantity, reason="insufficient_stock")
                 raise ValueError(f"产品「{product_name}」库存不足，当前库存: {stock}，需要: {quantity}")
 
             item_price = unit_price * quantity
@@ -139,24 +140,29 @@ class OrderService:
 
         if self.order_dao.use_memory:
             # 内存模式：无 products 表，仅写订单
+            log_backend("create_order", mode="memory", order_id=order_data["order_id"], user_id=user_id)
             created_order = self.order_dao.create_order(order_data)
             for item in processed_items:
                 self.order_dao.create_order_item(item)
         else:
             # 数据库模式：事务内原子扣库存 + 写订单
+            log_backend("create_order_begin", mode="db", order_id=order_data["order_id"], user_id=user_id, items_count=len(processed_items))
             def _tx(db):
                 for item in processed_items:
                     rows = self.order_dao.decrement_stock(item["product_name"], item["quantity"])
                     if rows == 0:
+                        log_backend("decrement_stock_fail", product_name=item["product_name"], quantity=item["quantity"], rows_affected=0)
                         raise ValueError(
                             f"产品「{item['product_name']}」库存不足或已被占用，请稍后重试"
                         )
+                    log_backend("decrement_stock_ok", product_name=item["product_name"], quantity=item["quantity"], rows_affected=rows)
                 self.order_dao._create_order_tx(order_data)
                 for item in processed_items:
                     self.order_dao._create_order_item_tx(item)
 
             self.order_dao.db.run_transaction(_tx)
             created_order = {**order_data, "items": processed_items}
+            log_backend("create_order_ok", order_id=order_data["order_id"])
 
         created_order.setdefault("items", processed_items)
         return created_order
@@ -239,18 +245,23 @@ class OrderService:
         """
         if not PRODUCT_DB_AVAILABLE or product_db is None:
             # 降级处理：返回模拟数据
-            return [
+            fallback = [
                 {"name": "云边茉莉", "price": 18.00, "stock": 100, "status": 1},
                 {"name": "桂花云露", "price": 20.00, "stock": 80, "status": 1},
                 {"name": "云雾观音", "price": 22.00, "stock": 60, "status": 1},
                 {"name": "珍珠奶茶", "price": 15.00, "stock": 120, "status": 1},
                 {"name": "红豆奶茶", "price": 16.00, "stock": 100, "status": 1}
             ]
-        
+            log_backend("get_all_products", source="fallback_mock", products=[{"name": p["name"], "stock": p["stock"]} for p in fallback])
+            return fallback
+
         try:
             query = "SELECT name, price, stock, status FROM products WHERE status = 1"
-            return product_db.fetch_all(query)
+            rows = product_db.fetch_all(query)
+            log_backend("get_all_products", source="db", products=[{"name": r.get("name"), "stock": r.get("stock")} for r in rows])
+            return rows
         except Exception as e:
+            log_backend("get_all_products", source="db", error=str(e))
             print(f"获取所有产品失败: {str(e)}")
             return []
     
