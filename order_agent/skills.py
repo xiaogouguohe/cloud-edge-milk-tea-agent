@@ -81,6 +81,18 @@ STAFF_SKILLS = CUSTOMER_SKILLS + [
     {
         "type": "function",
         "function": {
+            "name": "order_get_order",
+            "description": "根据订单ID查询订单详情。店员可查任意订单。当用户提供订单号（如 ORDER_xxx）时使用。",
+            "parameters": {
+                "type": "object",
+                "properties": {"orderId": {"type": "string", "description": "订单ID"}},
+                "required": ["orderId"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "order_propose_product_update",
             "description": "提议修改产品的单价或库存。不执行修改，仅返回当前值与拟修改值，供前端弹出确认框。当店员要求修改产品价格或库存时，必须先调用此工具。",
             "parameters": {

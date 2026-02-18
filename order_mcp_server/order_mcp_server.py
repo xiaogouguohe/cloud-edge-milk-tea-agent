@@ -155,7 +155,19 @@ class OrderMCPServer:
             handler=self._propose_product_update
         )
 
-        # 6. 执行产品修改（店员，落库）
+        # 6. 根据订单 ID 查询订单（店员，可查任意订单）
+        self.mcp_server.register_tool_func(
+            name="order-get-order",
+            description="根据订单ID查询订单详情。店员可查任意订单，顾客只能查自己的。",
+            parameters={
+                "type": "object",
+                "properties": {"orderId": {"type": "string", "description": "订单ID，如 ORDER_xxx"}},
+                "required": ["orderId"]
+            },
+            handler=self._get_order
+        )
+
+        # 7. 执行产品修改（店员，落库）
         self.mcp_server.register_tool_func(
             name="order-update-product",
             description="执行产品修改，更新数据库中的单价或库存。应在用户确认后调用。",
@@ -205,6 +217,16 @@ class OrderMCPServer:
             return self.order_service.format_order_response(order)
         except Exception as e:
             return f"创建订单失败: {str(e)}"
+
+    def _get_order(self, orderId: str) -> str:
+        """工具：根据订单 ID 查询订单详情"""
+        try:
+            order = self.order_service.get_order(orderId)
+            if not order:
+                return f"未找到订单「{orderId}」，请确认订单号是否正确。"
+            return self.order_service.format_order_response(order)
+        except Exception as e:
+            return f"查询订单失败: {str(e)}"
 
     def _get_orders_by_user(self, userId: int) -> str:
         """工具：获取用户订单列表"""
