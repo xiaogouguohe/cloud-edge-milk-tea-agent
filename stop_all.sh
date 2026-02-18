@@ -36,6 +36,20 @@ else
     echo "未找到 OrderAgent PID 文件"
 fi
 
+if [ -f logs/supervisor.pid ]; then
+    SUP_PID=$(cat logs/supervisor.pid)
+    if ps -p $SUP_PID > /dev/null 2>&1; then
+        echo "停止 Supervisor API (PID: $SUP_PID)..."
+        kill $SUP_PID
+        echo "✓ Supervisor API 已停止"
+    else
+        echo "Supervisor API 未运行"
+    fi
+    rm -f logs/supervisor.pid
+else
+    echo "未找到 Supervisor API PID 文件"
+fi
+
 # 如果 PID 文件不存在，尝试通过端口查找并停止
 if lsof -Pi :10002 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "发现端口 10002 被占用，尝试停止..."
@@ -45,6 +59,11 @@ fi
 if lsof -Pi :10006 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "发现端口 10006 被占用，尝试停止..."
     lsof -ti:10006 | xargs kill -9 2>/dev/null
+fi
+
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "发现端口 8000 被占用，尝试停止..."
+    lsof -ti:8000 | xargs kill -9 2>/dev/null
 fi
 
 echo ""
