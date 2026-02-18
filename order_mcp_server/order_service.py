@@ -118,15 +118,16 @@ class OrderService:
             item_price = unit_price * quantity
             total_price += item_price
 
+            # 同一产品不同甜度/冰量分条存储，每个 (product, sweetness, ice_level) 一条
+            product_id = self._get_product_id(product_name)
             processed_item = {
                 "order_id": order_id,
-                "product_name": product_name,
+                "product_id": product_id if product_id is not None else 0,
+                "product_name": product_name,  # 用于展示和 decrement_stock
                 "sweetness": sweetness_num,
                 "ice_level": ice_level_num,
                 "quantity": quantity,
                 "unit_price": float(unit_price),
-                "item_price": float(item_price),
-                "remark": item_data.get("remark", "")
             }
             processed_items.append(processed_item)
 
@@ -236,6 +237,20 @@ class OrderService:
             print(f"获取所有产品失败: {str(e)}")
             return []
     
+    def _get_product_id(self, product_name: str) -> Optional[int]:
+        """根据产品名称获取 product_id（用于 order_items 外键）"""
+        if not PRODUCT_DB_AVAILABLE or product_db is None:
+            return None
+        try:
+            if product_db.db_type == "sqlite":
+                row = product_db.fetch_one("SELECT id FROM products WHERE name = ?", (product_name,))
+            else:
+                row = product_db.fetch_one("SELECT id FROM products WHERE name = %s", (product_name,))
+            return int(row["id"]) if row and row.get("id") is not None else None
+        except Exception as e:
+            print(f"查询产品ID失败: {str(e)}")
+            return None
+
     def _get_product_price(self, product_name: str) -> Optional[float]:
         """
         查询产品价格
@@ -305,12 +320,13 @@ class OrderService:
         for i, item in enumerate(items, 1):
             sweetness_text = sweetness_map.get(item.get("sweetness", 5), "标准糖")
             ice_level_text = ice_level_map.get(item.get("ice_level", 5), "正常冰")
+            unit_price = item.get("unit_price", 0)
+            quantity = item.get("quantity", 1)
+            item_price = item.get("item_price", unit_price * quantity)
             result += f"""
   {i}. {item.get('product_name', '')}
-     甜度: {sweetness_text} | 冰量: {ice_level_text} | 数量: {item.get('quantity', 1)}
-     单价: ¥{item.get('unit_price', 0):.2f} | 小计: ¥{item.get('item_price', 0):.2f}"""
-            if item.get("remark"):
-                result += f"\n     备注: {item.get('remark')}"
+     甜度: {sweetness_text} | 冰量: {ice_level_text} | 数量: {quantity}
+     单价: ¥{unit_price:.2f} | 小计: ¥{item_price:.2f}"""
         
         return result
     

@@ -182,10 +182,10 @@ class OrderDAO:
     
     def create_order_item(self, item_data: Dict) -> Dict:
         """
-        创建订单项
+        创建订单项（同一产品不同甜度/冰量分条）
         
         Args:
-            item_data: 订单项数据
+            item_data: 订单项数据（含 product_id, sweetness, ice_level, quantity, unit_price）
             
         Returns:
             创建的订单项信息
@@ -196,29 +196,23 @@ class OrderDAO:
             item_data["items"].append(item_data)
             return item_data
         
-        # 插入订单项表
+        # 插入订单项表（精简字段）
         if self.db.db_type == "sqlite":
             query = """INSERT INTO order_items
-                       (order_id, product_id, product_name, sweetness, ice_level,
-                        quantity, unit_price, item_price, remark, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                       (order_id, product_id, sweetness, ice_level, quantity, unit_price)
+                       VALUES (?, ?, ?, ?, ?, ?)"""
         else:  # MySQL
             query = """INSERT INTO order_items
-                       (order_id, product_id, product_name, sweetness, ice_level,
-                        quantity, unit_price, item_price, remark, created_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                       (order_id, product_id, sweetness, ice_level, quantity, unit_price)
+                       VALUES (%s, %s, %s, %s, %s, %s)"""
         
         params = (
             item_data["order_id"],
-            item_data.get("product_id", 0),  # TODO: 从 products 表查询实际 ID
-            item_data["product_name"],
+            item_data.get("product_id", 0),
             item_data["sweetness"],
             item_data["ice_level"],
             item_data["quantity"],
             item_data["unit_price"],
-            item_data["item_price"],
-            item_data.get("remark", ""),
-            datetime.now()
         )
         
         self.db.execute(query, params)
@@ -243,47 +237,56 @@ class OrderDAO:
         return {**order_data, "items": []}
 
     def _create_order_item_tx(self, item_data: Dict) -> None:
-        """事务内插入订单项（不提交）"""
+        """事务内插入订单项（不提交），同一产品不同甜度/冰量分条"""
         if self.db.db_type == "sqlite":
             query = """INSERT INTO order_items
-                       (order_id, product_id, product_name, sweetness, ice_level,
-                        quantity, unit_price, item_price, remark, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                       (order_id, product_id, sweetness, ice_level, quantity, unit_price)
+                       VALUES (?, ?, ?, ?, ?, ?)"""
         else:
             query = """INSERT INTO order_items
-                       (order_id, product_id, product_name, sweetness, ice_level,
-                        quantity, unit_price, item_price, remark, created_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                       (order_id, product_id, sweetness, ice_level, quantity, unit_price)
+                       VALUES (%s, %s, %s, %s, %s, %s)"""
         params = (
-            item_data["order_id"], item_data.get("product_id", 0), item_data["product_name"],
+            item_data["order_id"], item_data.get("product_id", 0),
             item_data["sweetness"], item_data["ice_level"], item_data["quantity"],
-            item_data["unit_price"], item_data["item_price"], item_data.get("remark", ""),
-            datetime.now()
+            item_data["unit_price"],
         )
         self.db.execute_no_commit(query, params)
-        log_backend("db_insert_order_item_tx", order_id=item_data["order_id"], product_name=item_data["product_name"], quantity=item_data["quantity"])
+        log_backend("db_insert_order_item_tx", order_id=item_data["order_id"], product_id=item_data.get("product_id"), quantity=item_data["quantity"])
 
     def get_order_items(self, order_id: str) -> List[Dict]:
         """
-        获取订单的所有订单项
+        获取订单的所有订单项（JOIN products 获取 product_name）
         
         Args:
             order_id: 订单ID
             
         Returns:
-            订单项列表
+            订单项列表（含 product_name，item_price=unit_price*quantity）
         """
         if self.use_memory:
             for order in self.memory_orders:
                 if order.get("order_id") == order_id:
-                    return order.get("items", [])
+                    items = order.get("items", [])
+                    for it in items:
+                        it.setdefault("item_price", it.get("unit_price", 0) * it.get("quantity", 1))
+                    return items
             return []
         
         if self.db.db_type == "sqlite":
-            query = "SELECT * FROM order_items WHERE order_id = ?"
+            query = """SELECT oi.*, p.name as product_name
+                       FROM order_items oi
+                       LEFT JOIN products p ON oi.product_id = p.id
+                       WHERE oi.order_id = ?"""
         else:
-            query = "SELECT * FROM order_items WHERE order_id = %s"
-        return self.db.fetch_all(query, (order_id,))
+            query = """SELECT oi.*, p.name as product_name
+                       FROM order_items oi
+                       LEFT JOIN products p ON oi.product_id = p.id
+                       WHERE oi.order_id = %s"""
+        rows = self.db.fetch_all(query, (order_id,))
+        for r in rows:
+            r["item_price"] = float(r.get("unit_price", 0)) * int(r.get("quantity", 1))
+        return rows
     
     def delete_order(self, user_id: int, order_id: str) -> bool:
         """

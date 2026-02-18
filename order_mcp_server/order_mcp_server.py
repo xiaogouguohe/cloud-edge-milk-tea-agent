@@ -88,8 +88,8 @@ class OrderMCPServer:
 
         # 3. 创建订单（顾客）
         self.mcp_server.register_tool_func(
-            name="order-create-order",
-            description="创建奶茶订单。当用户想要下单、点单或购买时使用此工具。",
+            name=            "order-create-order",
+            description="创建奶茶订单。当用户想要下单、点单或购买时使用此工具。同一产品若糖度或冰量不同，需拆成多条 items（每条对应一种规格）。",
             parameters={
                 "type": "object",
                 "properties": {

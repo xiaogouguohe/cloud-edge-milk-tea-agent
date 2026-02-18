@@ -132,21 +132,17 @@ class DatabaseManager:
                 )
             """)
         
-        # 创建订单项表（从表，存储订单中的每个产品）
+        # 创建订单项表（精简版：同一产品不同甜度/冰量分多条）
         if self.db_type == "sqlite":
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS order_items (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     order_id VARCHAR(50) NOT NULL,
                     product_id BIGINT NOT NULL,
-                    product_name VARCHAR(100) NOT NULL,
                     sweetness TINYINT NOT NULL,
                     ice_level TINYINT NOT NULL,
                     quantity INT NOT NULL DEFAULT 1,
                     unit_price DECIMAL(10,2) NOT NULL,
-                    item_price DECIMAL(10,2) NOT NULL,
-                    remark TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
                     FOREIGN KEY (product_id) REFERENCES products(id)
                 )
@@ -157,14 +153,10 @@ class DatabaseManager:
                     id BIGINT AUTO_INCREMENT PRIMARY KEY,
                     order_id VARCHAR(50) NOT NULL,
                     product_id BIGINT NOT NULL,
-                    product_name VARCHAR(100) NOT NULL,
                     sweetness TINYINT NOT NULL,
                     ice_level TINYINT NOT NULL,
                     quantity INT NOT NULL DEFAULT 1,
                     unit_price DECIMAL(10,2) NOT NULL,
-                    item_price DECIMAL(10,2) NOT NULL,
-                    remark TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
                     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
                 )

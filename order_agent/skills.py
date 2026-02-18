@@ -51,7 +51,7 @@ CUSTOMER_SKILLS = BASE_SKILLS + [
         "type": "function",
         "function": {
             "name": "order_create_order",
-            "description": "创建奶茶订单。当用户想要下单、点单或购买时使用此工具。",
+            "description": "创建奶茶订单。当用户想要下单、点单或购买时使用此工具。同一产品若糖度或冰量不同，需拆成多条 items（每条对应一种规格）。",
             "parameters": {
                 "type": "object",
                 "properties": {
