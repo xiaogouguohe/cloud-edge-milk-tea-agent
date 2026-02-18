@@ -195,6 +195,22 @@ class OrderService:
         """
         return self.order_dao.query_orders(user_id, filters)
     
+    def get_product_info(self, product_name: str) -> Optional[Dict]:
+        """
+        获取单个产品的详细信息，包括价格和是否有货
+        
+        Args:
+            product_name: 奶茶产品名称
+            
+        Returns:
+            产品信息字典，如果不存在则返回 None
+        """
+        products = self.get_all_products()
+        for p in products:
+            if p.get("name") == product_name:
+                return p
+        return None
+    
     def get_all_products(self) -> List[Dict]:
         """
         获取所有产品信息，包括价格和库存
