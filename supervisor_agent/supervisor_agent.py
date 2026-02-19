@@ -82,109 +82,57 @@ class SupervisorAgent:
         # A2A 客户端（用于调用子智能体）
         self.a2a_client = A2AClient(service_discovery=self.service_discovery)
     
-    def _is_base_order_query(self, user_input: str) -> bool:
-        """
-        判断是否为菜单/价格/库存查询。此类查询无需登录，所有人均可访问。
-        修改类请求（改价格、改库存等）不算 base 查询，需走身份校验。
-        """
-        if any(kw in user_input for kw in ["修改", "改成", "改为", "更新", "调整"]):
-            return False
-        keywords = [
-            "菜单", "有哪些", "有什么", "奶茶", "价格", "多少钱", "有货", "库存",
-            "售罄", "产品", "饮品", "喝什么", "推荐"
-        ]
-        input_lower = user_input.lower().strip()
-        if len(input_lower) < 2:
-            return False
-        return any(kw in user_input for kw in keywords)
-
     def route_to_agent(self, user_input: str, req_id: Optional[str] = None) -> Optional[str]:
         """
-        分析用户输入，判断应该路由到哪个子智能体
-        
-        Args:
-            user_input: 用户输入
-            req_id: 请求追踪 ID
-            
-        Returns:
-            应该调用的子智能体名称，如果不需要特定智能体则返回 None
+        使用 LLM 分析用户输入及对话上下文，判断应路由到哪个子智能体
         """
-        # 第一步：快速关键词匹配
-        result = self._route_by_keywords(user_input)
-        if result:
-            return result
-        
-        # 第二步：如果关键词匹配失败，使用 LLM 判断（更智能）
         return self._route_by_llm(user_input, req_id=req_id)
-    
-    def _route_by_keywords(self, user_input: str) -> Optional[str]:
-        """
-        使用关键词匹配进行路由（快速但可能不够准确）
-        """
-        user_input_lower = user_input.lower()
-        
-        # 订单相关关键词（扩展版）
-        order_keywords = [
-            "下单", "订单", "点单", "购买", "结账", "支付", "购物车",
-            "取消订单", "修改订单", "查询订单", "我要", "给我", "来一杯",
-            "来一份", "要一杯", "要一份", "点一杯", "点一份",
-            "修改产品", "改价格", "改库存", "产品表", "单价", "库存"
-        ]
-        if any(keyword in user_input_lower for keyword in order_keywords):
-            return "order_agent"
-        
-        # 产品名称列表
-        product_names = ["云边茉莉", "桂花云露", "云雾观音", "珍珠奶茶", "红豆奶茶", "奶茶"]
-        
-        # 产品名称 + 数量/规格匹配（如"一杯"、"一份"、"少糖"等）
-        has_product = any(product in user_input for product in product_names)
-        has_quantity = any(word in user_input for word in ["一杯", "一份", "两杯", "两份", "1杯", "2杯", "三杯", "四杯"])
-        has_spec = any(word in user_input for word in ["少糖", "半糖", "微糖", "无糖", "标准糖", 
-                                                        "正常冰", "少冰", "去冰", "温", "热", "热饮"])
-        
-        # 如果包含产品名称 + (数量或规格)，认为是下单请求
-        if has_product and (has_quantity or has_spec):
-            return "order_agent"
-        
-        # 反馈相关关键词
-        feedback_keywords = ["反馈", "投诉", "建议", "差评", "不满意", "问题", "意见"]
-        if any(keyword in user_input_lower for keyword in feedback_keywords):
-            return "feedback_agent"
-        
-        # 咨询相关关键词
-        consult_keywords = ["咨询", "介绍", "推荐", "产品", "活动", "优惠", "价格", "口味", "什么", "怎么", "如何"]
-        if any(keyword in user_input_lower for keyword in consult_keywords):
-            return "consult_agent"
-        
-        return None
     
     def _route_by_llm(self, user_input: str, req_id: Optional[str] = None) -> Optional[str]:
         """
-        使用 LLM 进行智能路由判断（准确但需要 API 调用）
+        使用 LLM 进行智能路由判断，结合对话上下文以识别确认类回复
         """
-        prompt = f"""你是云边奶茶铺的监督者智能体，需要分析用户请求并路由到合适的子智能体。
+        # 提取最近 4 轮对话作为上下文（排除 system）
+        context_parts = []
+        for msg in self.history[-6:]:  # 最多取最近 6 条
+            if msg.get("role") == "system":
+                continue
+            role = "用户" if msg.get("role") == "user" else "助手"
+            content = msg.get("content", "")
+            if isinstance(content, str) and content:
+                # 去掉 [customer] 等前缀便于阅读
+                if content.startswith("[") and "]" in content:
+                    content = content.split("]", 1)[-1].strip()
+                context_parts.append(f"- {role}：{content[:200]}{'...' if len(content) > 200 else ''}")
+        context_str = "\n".join(context_parts) if context_parts else "（无历史）"
+        
+        prompt = f"""你是云边奶茶铺的监督者，需要根据用户请求和对话上下文，判断应路由到哪个子智能体。
 
-可用子智能体：
-1. order_agent - 处理订单相关业务，包括下单、查询、修改等
-2. consult_agent - 处理产品咨询、活动信息和冲泡指导
-3. feedback_agent - 处理用户反馈、投诉和差评
+【可用子智能体】
+1. order_agent - 订单相关：下单、点单、购买、查询/修改订单、确认规格（糖度/冰度）等
+2. consult_agent - 产品咨询、活动、价格、冲泡指导
+3. feedback_agent - 反馈、投诉、建议、差评
 
-用户请求: {user_input}
+【对话上下文】
+{context_str}
 
-请判断这个请求应该路由到哪个子智能体。如果用户想要：
-- 下单、点单、购买、查询订单、修改订单、取消订单 → order_agent
-- 咨询产品、了解活动、询问价格、推荐产品 → consult_agent
-- 反馈、投诉、建议、差评 → feedback_agent
-- 一般性对话 → 返回 None
+【当前用户】{user_input}
 
-请只返回智能体名称（order_agent、consult_agent、feedback_agent）或 None，不要其他文字。"""
+【路由规则】
+- 用户明确表达下单、点单、购买、查订单、改订单 → order_agent
+- 上一轮助手在询问订单/规格确认（如糖度、冰度、数量），用户回复是确认/肯定（如：是的、好、一样、可以、嗯嗯）→ order_agent
+- 用户咨询产品、活动、价格、推荐 → consult_agent
+- 用户反馈、投诉、建议 → feedback_agent
+- 一般闲聊、无法判断 → None
+
+请只返回：order_agent / consult_agent / feedback_agent / None"""
 
         t0 = time.perf_counter()
         try:
             response = Generation.call(
                 model=DASHSCOPE_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,  # 低温度，确保路由准确性
+                temperature=0.1,
                 result_format='message'
             )
             duration_ms = int((time.perf_counter() - t0) * 1000)
@@ -192,12 +140,10 @@ class SupervisorAgent:
                 result = response.output.choices[0].message.content.strip()
                 log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "success", duration_ms,
                         input_content=user_input, output_content=result)
-                # 清理可能的格式问题
                 result = result.lower().replace(" ", "_").replace("\"", "").replace("'", "")
-                
                 if result in ["order_agent", "consult_agent", "feedback_agent"]:
                     return result
-                elif result == "none" or result == "null":
+                if result == "none" or result == "null":
                     return None
             else:
                 log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(response.message),
@@ -206,7 +152,6 @@ class SupervisorAgent:
             duration_ms = int((time.perf_counter() - t0) * 1000)
             log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(e),
                     input_content=user_input, output_content="")
-        
         return None
     
     def call_sub_agent(self, agent_name: str, user_input: str, force_role: Optional[str] = None, req_id: Optional[str] = None) -> str:
@@ -423,15 +368,8 @@ class SupervisorAgent:
         Returns:
             AI 回复
         """
-        # 1. 菜单/价格/库存查询：无需登录，所有人可访问
-        if self._is_base_order_query(user_input):
-            agent_response = self.call_sub_agent("order_agent", user_input, force_role="base", req_id=req_id)
-            self.history.append({"role": "user", "content": user_input})
-            self.history.append({"role": "assistant", "content": agent_response})
-            return agent_response
-
-        # 2. 身份识别逻辑（下单等操作需要先确认身份）
-        if not self.role:
+        # 1. 身份识别：用户明确说身份时设置 role，否则不阻塞，交给子 agent 根据权限判断
+        if self.role is None:
             input_lower = user_input.lower()
             if "顾客" in input_lower or "customer" in input_lower:
                 self.role = "customer"
@@ -442,13 +380,12 @@ class SupervisorAgent:
             elif "管理员" in input_lower or "admin" in input_lower:
                 self.role = "admin"
                 return "身份已确认为【管理员】。您拥有所有管理权限，包括退款和删除订单。"
-            else:
-                return "欢迎来到云边奶茶铺！为了提供更好的服务，请先告知您的身份（顾客、店员 或 管理员）。"
+            # 未明确身份时不阻塞，继续路由；order_agent 会以 role=base 处理，权限不足时由其返回提示
 
-        # 添加用户输入到历史记录
+        # 添加用户输入到历史记录（未登录时 role 为 None，call_sub_agent 会传 base）
         self.history.append({
             "role": "user",
-            "content": f"[{self.role}] {user_input}"
+            "content": f"[{self.role or 'base'}] {user_input}"
         })
         
         try:
