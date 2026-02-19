@@ -36,6 +36,34 @@ else
     echo "未找到 OrderAgent PID 文件"
 fi
 
+if [ -f logs/consult_mcp_server.pid ]; then
+    CONSULT_MCP_PID=$(cat logs/consult_mcp_server.pid)
+    if ps -p $CONSULT_MCP_PID > /dev/null 2>&1; then
+        echo "停止 Consult MCP Server (PID: $CONSULT_MCP_PID)..."
+        kill $CONSULT_MCP_PID
+        echo "✓ Consult MCP Server 已停止"
+    else
+        echo "Consult MCP Server 未运行"
+    fi
+    rm -f logs/consult_mcp_server.pid
+else
+    echo "未找到 Consult MCP Server PID 文件"
+fi
+
+if [ -f logs/consult_agent.pid ]; then
+    CONSULT_AGENT_PID=$(cat logs/consult_agent.pid)
+    if ps -p $CONSULT_AGENT_PID > /dev/null 2>&1; then
+        echo "停止 Consult Agent (PID: $CONSULT_AGENT_PID)..."
+        kill $CONSULT_AGENT_PID
+        echo "✓ Consult Agent 已停止"
+    else
+        echo "Consult Agent 未运行"
+    fi
+    rm -f logs/consult_agent.pid
+else
+    echo "未找到 Consult Agent PID 文件"
+fi
+
 if [ -f logs/supervisor.pid ]; then
     SUP_PID=$(cat logs/supervisor.pid)
     if ps -p $SUP_PID > /dev/null 2>&1; then
@@ -59,6 +87,16 @@ fi
 if lsof -Pi :10006 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "发现端口 10006 被占用，尝试停止..."
     lsof -ti:10006 | xargs kill -9 2>/dev/null
+fi
+
+if lsof -Pi :10003 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "发现端口 10003 被占用，尝试停止..."
+    lsof -ti:10003 | xargs kill -9 2>/dev/null
+fi
+
+if lsof -Pi :10005 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "发现端口 10005 被占用，尝试停止..."
+    lsof -ti:10005 | xargs kill -9 2>/dev/null
 fi
 
 if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then

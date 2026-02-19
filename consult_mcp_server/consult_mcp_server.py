@@ -164,4 +164,4 @@ class ConsultMCPServer:
             debug: 是否开启调试模式
         """
         print(f"ConsultMCPServer 启动在 http://{host}:{self.port}", file=sys.stderr, flush=True)
-        self.mcp_server.run(host=host, port=self.port, debug=debug)
+        self.mcp_server.run(host=host, debug=debug)

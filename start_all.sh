@@ -1,5 +1,5 @@
 #!/bin/bash
-# 启动所有服务：Order MCP Server、Order Agent、Supervisor API
+# 启动所有服务：Order MCP Server、Order Agent、Consult MCP Server、Consult Agent、Supervisor API
 # 用法:
 #   source ./start_all_services.sh   # 被 E2E 或其它脚本调用，变量 MCP_PID/AGENT_PID/SUP_PID 在父 shell
 #   ./start_all_services.sh         # 独立运行，PID 写入 logs/*.pid，可用 stop_all.sh 停止
@@ -38,7 +38,7 @@ fi
 
 # 强制重启：先停止占用端口的旧进程，确保加载最新代码
 echo "检查并清理旧服务进程..."
-for port in 10002 10006 8000; do
+for port in 10002 10003 10005 10006 8000; do
     if lsof -ti:$port >/dev/null 2>&1; then
         echo "  停止端口 $port 上的进程..."
         lsof -ti:$port | xargs kill -9 2>/dev/null || true
@@ -49,6 +49,8 @@ done
 # 初始化 PID 变量（供 source 时使用）
 MCP_PID=""
 AGENT_PID=""
+CONSULT_MCP_PID=""
+CONSULT_AGENT_PID=""
 SUP_PID=""
 
 # 1. 启动 Order MCP Server
@@ -73,7 +75,29 @@ else
     echo "  ✓ Order Agent 已运行"
 fi
 
-# 3. 启动 Supervisor API
+# 3. 启动 Consult MCP Server
+if ! curl -s http://localhost:10003/mcp/health >/dev/null 2>&1; then
+    echo "启动 Consult MCP Server (10003)..."
+    $PYTHON consult_mcp_server/run_consult_mcp_server.py >> logs/e2e_consult_mcp.log 2>&1 &
+    CONSULT_MCP_PID=$!
+    wait_ready "http://localhost:10003/mcp/health" "Consult MCP Server" || exit 1
+    echo "  ✓ Consult MCP Server 就绪"
+else
+    echo "  ✓ Consult MCP Server 已运行"
+fi
+
+# 4. 启动 Consult Agent
+if ! curl -s http://localhost:10005/a2a/health >/dev/null 2>&1; then
+    echo "启动 Consult Agent (10005)..."
+    $PYTHON consult_agent/run_consult_agent.py >> logs/e2e_consult_agent.log 2>&1 &
+    CONSULT_AGENT_PID=$!
+    wait_ready "http://localhost:10005/a2a/health" "Consult Agent" || exit 1
+    echo "  ✓ Consult Agent 就绪"
+else
+    echo "  ✓ Consult Agent 已运行"
+fi
+
+# 5. 启动 Supervisor API
 if ! curl -s http://localhost:8000/api/health >/dev/null 2>&1; then
     echo "启动 Supervisor API (8000)..."
     $PYTHON -m supervisor_agent.api >> logs/e2e_supervisor.log 2>&1 &
@@ -88,14 +112,18 @@ fi
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     [[ -n "$MCP_PID" ]] && echo "$MCP_PID" > logs/mcp_server.pid
     [[ -n "$AGENT_PID" ]] && echo "$AGENT_PID" > logs/order_agent.pid
+    [[ -n "$CONSULT_MCP_PID" ]] && echo "$CONSULT_MCP_PID" > logs/consult_mcp_server.pid
+    [[ -n "$CONSULT_AGENT_PID" ]] && echo "$CONSULT_AGENT_PID" > logs/consult_agent.pid
     [[ -n "$SUP_PID" ]] && echo "$SUP_PID" > logs/supervisor.pid
     echo ""
     echo "=========================================="
     echo "所有服务已启动"
     echo "=========================================="
-    echo "  Order MCP Server:  http://localhost:10002"
-    echo "  Order Agent:       http://localhost:10006"
-    echo "  Supervisor API:    http://localhost:8000"
+    echo "  Order MCP Server:    http://localhost:10002"
+    echo "  Order Agent:         http://localhost:10006"
+    echo "  Consult MCP Server:  http://localhost:10003"
+    echo "  Consult Agent:       http://localhost:10005"
+    echo "  Supervisor API:      http://localhost:8000"
     echo ""
     echo "停止服务: ./stop_all.sh"
 fi
