@@ -28,6 +28,11 @@ function safe(s: string | undefined): string {
   return String(s).replace(/\t/g, ' ').replace(/\n/g, ' ').replace(/\r/g, '')
 }
 
+function field(s: string | undefined): string {
+  const v = safe(s ?? '')
+  return v ? v : '-'
+}
+
 function genReqId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 }
@@ -40,7 +45,7 @@ function logAccess(
   durationMs: number,
   userAgent: string = ''
 ): void {
-  const parts = [reqId, ts(), method, path, String(status), safe(userAgent), String(durationMs)]
+  const parts = [field(reqId), ts(), field(method), field(path), field(String(status)), field(userAgent), field(String(durationMs))]
   ACCESS_STREAM.write(parts.join('\t') + '\n')
 }
 
@@ -52,7 +57,7 @@ function logBackend(
   durationMs: number,
   error: string = ''
 ): void {
-  const parts = [reqId, ts(), target, operation, status, String(durationMs), safe(error)]
+  const parts = [field(reqId), ts(), field(target), field(operation), field(status), field(String(durationMs)), field(error)]
   BACKEND_STREAM.write(parts.join('\t') + '\n')
 }
 

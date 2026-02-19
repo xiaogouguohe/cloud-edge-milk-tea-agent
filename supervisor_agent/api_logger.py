@@ -28,6 +28,12 @@ def _safe(s: Optional[str]) -> str:
     return str(s).replace("\t", " ").replace("\n", " ").replace("\r", " ")
 
 
+def _field(s: Optional[str]) -> str:
+    """空值用 '-' 占位"""
+    v = _safe(s) if s is not None else ""
+    return "-" if not v else v
+
+
 def log_access(
     req_id: str,
     method: str,
@@ -41,9 +47,8 @@ def log_access(
     访问日志：记录入站请求，写入 logs/supervisor_access.log
     字段：req_id	timestamp	method	path	status	user_id	chat_id	duration_ms
     """
-    parts = [req_id, _ts(), method, path, status, _safe(user_id), _safe(chat_id)]
-    if duration_ms is not None:
-        parts.append(str(duration_ms))
+    parts = [_field(req_id), _ts(), _field(method), _field(path), _field(status), _field(user_id), _field(chat_id)]
+    parts.append(_field(str(duration_ms)) if duration_ms is not None else "-")
     _ACCESS_FILE.write("\t".join(parts) + "\n")
     _ACCESS_FILE.flush()
 
@@ -60,19 +65,18 @@ def log_backend(
     回源日志：记录调用下游服务，写入 logs/supervisor_backend.log
     字段：req_id	timestamp	target	operation	status	duration_ms	error
     """
-    parts = [req_id, _ts(), target, operation, status]
-    if duration_ms is not None:
-        parts.append(str(duration_ms))
-    else:
-        parts.append("")
-    parts.append(_safe(error))
+    parts = [_field(req_id), _ts(), _field(target), _field(operation), _field(status)]
+    parts.append(_field(str(duration_ms)) if duration_ms is not None else "-")
+    parts.append(_field(error))
     _BACKEND_FILE.write("\t".join(parts) + "\n")
     _BACKEND_FILE.flush()
 
 
 def _truncate(s: str, max_len: int = 2000) -> str:
-    """截断并安全化，用于 input/output 字段"""
+    """截断并安全化，用于 input/output 字段；空值返回 '-'"""
     s = _safe(s)
+    if not s:
+        return "-"
     return s[:max_len] + ("..." if len(s) > max_len else "")
 
 
@@ -90,12 +94,9 @@ def log_llm(
     LLM 交互日志：记录与 DashScope 等 LLM 的调用，写入 logs/supervisor_llm.log
     字段：req_id	timestamp	operation	model	status	duration_ms	error	input	output
     """
-    parts = [req_id or "", _ts(), operation, model, status]
-    if duration_ms is not None:
-        parts.append(str(duration_ms))
-    else:
-        parts.append("")
-    parts.append(_safe(error))
+    parts = [_field(req_id), _ts(), _field(operation), _field(model), _field(status)]
+    parts.append(_field(str(duration_ms)) if duration_ms is not None else "-")
+    parts.append(_field(error))
     inp = input_content if isinstance(input_content, str) else json.dumps(input_content, ensure_ascii=False)
     out = output_content if isinstance(output_content, str) else json.dumps(output_content, ensure_ascii=False)
     parts.append(_truncate(inp))

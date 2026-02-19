@@ -207,7 +207,13 @@ class OrderAgent:
                     msg = completion.choices[0].message
                     out_preview = getattr(msg, "content", "") or ""
                     if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        tc_names = [getattr(tc.function, "name", "") for tc in msg.tool_calls] if hasattr(msg, "tool_calls") else []
+                        tc_names = []
+                        for tc in msg.tool_calls:
+                            if isinstance(tc, dict):
+                                tc_names.append(tc.get("function", {}).get("name", ""))
+                            else:
+                                fn = getattr(tc, "function", None)
+                                tc_names.append(getattr(fn, "name", "") if fn else "")
                         out_preview = f"tool_calls:{tc_names}" if tc_names else ""
                     log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "success", duration_ms,
                             input_content=user_input, output_content=out_preview)
