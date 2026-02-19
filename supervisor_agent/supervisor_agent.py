@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root))
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
 from service_discovery import ServiceDiscovery
 from a2a.client import A2AClient
-from supervisor_agent.api_logger import log_llm
+from supervisor_agent.api_logger import log_llm, log_backend
 
 # 设置 DashScope API Key
 dashscope.api_key = DASHSCOPE_API_KEY
@@ -245,8 +245,16 @@ class SupervisorAgent:
             if req_id:
                 a2a_request["req_id"] = req_id
             
-            # 通过 A2A Client 调用子智能体
-            a2a_response = self.a2a_client.call_agent(agent_name, a2a_request)
+            # 回源：通过 A2A 调用子智能体
+            t0 = time.perf_counter()
+            try:
+                a2a_response = self.a2a_client.call_agent(agent_name, a2a_request)
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                log_backend(req_id or "", agent_name, "chat", "success", duration_ms=duration_ms)
+            except Exception as e:
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                log_backend(req_id or "", agent_name, "chat", "error", duration_ms=duration_ms, error=str(e))
+                raise
             
             # 提取响应内容
             if isinstance(a2a_response, dict):
@@ -361,7 +369,16 @@ class SupervisorAgent:
                 if req_id:
                     a2a_request["req_id"] = req_id
                 
-                a2a_response = a2a_client.call_agent(task.agent, a2a_request)
+                # 回源：调用子智能体
+                t0 = time.perf_counter()
+                try:
+                    a2a_response = a2a_client.call_agent(task.agent, a2a_request)
+                    duration_ms = int((time.perf_counter() - t0) * 1000)
+                    log_backend(req_id or "", task.agent, "chat", "success", duration_ms=duration_ms)
+                except Exception as e:
+                    duration_ms = int((time.perf_counter() - t0) * 1000)
+                    log_backend(req_id or "", task.agent, "chat", "error", duration_ms=duration_ms, error=str(e))
+                    raise
                 
                 # 提取响应
                 if isinstance(a2a_response, dict):
