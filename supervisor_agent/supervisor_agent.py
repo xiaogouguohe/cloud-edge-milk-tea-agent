@@ -189,8 +189,9 @@ class SupervisorAgent:
             )
             duration_ms = int((time.perf_counter() - t0) * 1000)
             if response.status_code == 200:
-                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "success", duration_ms)
                 result = response.output.choices[0].message.content.strip()
+                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "success", duration_ms,
+                        input_content=user_input, output_content=result)
                 # 清理可能的格式问题
                 result = result.lower().replace(" ", "_").replace("\"", "").replace("'", "")
                 
@@ -199,10 +200,12 @@ class SupervisorAgent:
                 elif result == "none" or result == "null":
                     return None
             else:
-                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(response.message))
+                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(response.message),
+                        input_content=user_input, output_content="")
         except Exception as e:
             duration_ms = int((time.perf_counter() - t0) * 1000)
-            log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+            log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(e),
+                    input_content=user_input, output_content="")
         
         return None
     
@@ -513,19 +516,22 @@ class SupervisorAgent:
                     )
                     duration_ms = int((time.perf_counter() - t0) * 1000)
                     if response.status_code == 200:
-                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "success", duration_ms)
                         ai_message = response.output.choices[0].message.content
+                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "success", duration_ms,
+                                input_content=self.history[-1] if self.history else "", output_content=ai_message)
                         self.history.append({
                             "role": "assistant",
                             "content": ai_message
                         })
                         return ai_message
                     else:
-                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(response.message))
+                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(response.message),
+                                input_content=self.history[-1] if self.history else "", output_content="")
                         return "抱歉，处理您的请求时出现了问题，请稍后再试。"
                 except Exception as e:
                     duration_ms = int((time.perf_counter() - t0) * 1000)
-                    log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                    log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(e),
+                            input_content=self.history[-1] if self.history else "", output_content="")
                     raise
             
         except Exception as e:

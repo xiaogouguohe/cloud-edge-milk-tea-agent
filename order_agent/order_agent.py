@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
 from dashscope.aigc.chat_completion import Completions
 from mcp.client import MCPClient
-from order_agent.order_agent_logger import log_access, log_backend, log_llm
+from order_agent.order_agent_logger import log_llm
 from service_discovery import ServiceDiscovery
 from a2a.server import A2AServer
 from order_agent.skills import SKILLS_BY_ROLE
@@ -82,9 +82,8 @@ class OrderAgent:
 2. 检查下单所需的必要信息：
    - 如果用户想要下单但缺少【冰度】或【糖度】，请礼貌地追问用户。
    - 支持用户在后续对话中直接补充信息（如只说“半糖”），请结合历史对话完成下单。
-3. 如果信息齐全（产品名、糖度、冰度、数量），必须调用 order_create_order 工具，不得跳过或编造结果。同一产品若糖度或冰量不同（如「一杯少糖去冰、一杯标准糖少冰」），需拆成多条 items，每条对应一种规格。
+3. 如果信息齐全（产品名、糖度、冰度、数量），必须调用 order_create_order 工具，不得跳过或编造结果。
 4. 当用户询问「我的订单」「订单记录」「历史订单」时，调用 order_get_orders_by_user 工具查询。
-5. 当用户询问「订单 ORDER_xxx 的详情」「查订单 xxx」时，调用 order_get_order 工具，必须传入 orderId 和 userId。
 5. 整合工具返回的结果，生成友好的回复。回复中的订单信息必须来自工具返回，不得虚构。
 
 约束:
@@ -161,21 +160,21 @@ class OrderAgent:
 
     def _invoke_tool(self, tool_name: str, mcp_server: str, parameters: Dict, req_id: Optional[str] = None) -> str:
         """调用工具"""
-        t0 = time.perf_counter()
         try:
+            print(f"[OrderAgent] 调用工具: {tool_name}, 参数: {parameters}", file=sys.stderr, flush=True)
             result = self.mcp_client.invoke_tool(mcp_server, tool_name, parameters, req_id=req_id)
-            duration_ms = int((time.perf_counter() - t0) * 1000)
             if result.get("status") == "success":
-                log_backend(req_id or "", mcp_server, tool_name, "success", duration_ms=duration_ms)
-                return str(result.get("result", ""))
+                tool_result = str(result.get("result", ""))
+                print(f"[OrderAgent] 工具返回(成功): {tool_result[:200]}...", file=sys.stderr, flush=True)
+                return tool_result
             else:
-                err_msg = result.get("error", "未知错误")
-                log_backend(req_id or "", mcp_server, tool_name, "error", duration_ms=duration_ms, error=err_msg)
-                return f"工具调用失败: {err_msg}"
+                err_msg = f"工具调用失败: {result.get('error', '未知错误')}"
+                print(f"[OrderAgent] 工具返回(失败): {err_msg}", file=sys.stderr, flush=True)
+                return err_msg
         except Exception as e:
-            duration_ms = int((time.perf_counter() - t0) * 1000)
-            log_backend(req_id or "", mcp_server, tool_name, "error", duration_ms=duration_ms, error=str(e))
-            return f"工具调用异常: {str(e)}"
+            err_msg = f"工具调用异常: {str(e)}"
+            print(f"[OrderAgent] 工具异常: {err_msg}", file=sys.stderr, flush=True)
+            return err_msg
 
     def chat(self, user_input: str, user_id: str, role: str = "customer", history: List[Dict] = None, req_id: Optional[str] = None) -> Dict:
         """
@@ -205,12 +204,20 @@ class OrderAgent:
                 )
                 duration_ms = int((time.perf_counter() - t0) * 1000)
                 if getattr(completion, "status_code", 200) == 200:
-                    log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "success", duration_ms)
+                    msg = completion.choices[0].message
+                    out_preview = getattr(msg, "content", "") or ""
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        tc_names = [getattr(tc.function, "name", "") for tc in msg.tool_calls] if hasattr(msg, "tool_calls") else []
+                        out_preview = f"tool_calls:{tc_names}" if tc_names else ""
+                    log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "success", duration_ms,
+                            input_content=user_input, output_content=out_preview)
                 else:
-                    log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(completion, "message", "")))
+                    log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(completion, "message", "")),
+                            input_content=user_input, output_content="")
             except Exception as e:
                 duration_ms = int((time.perf_counter() - t0) * 1000)
-                log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "error", duration_ms, str(e),
+                        input_content=user_input, output_content="")
                 raise
             
             if getattr(completion, "status_code", 200) != 200:
@@ -268,9 +275,6 @@ class OrderAgent:
                                 continue
                             if "userId" in arguments:
                                 arguments["userId"] = int(user_id)
-                            # order_get_order 顾客必须传 userId
-                            if skill_name == "order_get_order":
-                                arguments["userId"] = int(user_id)
 
                         # 参数规范化：LLM 可能输出扁平格式，需转为 items 数组
                         if skill_name == "order_create_order":
@@ -294,23 +298,6 @@ class OrderAgent:
                         if is_stock_error:
                             print(f"[OrderAgent] 检测到库存不足，直接返回: {tool_result[:100]}...", file=sys.stderr, flush=True)
                             return {"output": tool_result, "history": messages}
-
-                        # 提议修改产品：返回 pending_action 供前端确认
-                        if skill_name == "order_propose_product_update":
-                            try:
-                                data = json.loads(tool_result)
-                                if data.get("_propose_product_update"):
-                                    pending = {
-                                        "type": "product_update",
-                                        "productName": data.get("productName", ""),
-                                        "current": data.get("current", {}),
-                                        "proposed": data.get("proposed", {}),
-                                    }
-                                    msg = data.get("message", tool_result)
-                                    print(f"[OrderAgent] 提议修改产品，返回 pending_action", file=sys.stderr, flush=True)
-                                    return {"output": msg, "history": messages, "pending_action": pending}
-                            except (json.JSONDecodeError, KeyError):
-                                pass
                         
                     except Exception as e:
                         messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": f"错误: {str(e)}"})
@@ -325,20 +312,24 @@ class OrderAgent:
                     )
                     duration_ms = int((time.perf_counter() - t0) * 1000)
                     if getattr(final_completion, "status_code", 200) == 200:
-                        log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "success", duration_ms)
+                        final_msg = final_completion.choices[0].message
+                        output = final_msg.content or ""
+                        last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+                        log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "success", duration_ms,
+                                input_content=last_user, output_content=output)
+                        messages.append(_message_to_dict(final_msg))
+                        return {"output": output, "history": messages}
                     else:
-                        log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(final_completion, "message", "")))
+                        last_user = messages[-1].get("content", "") if messages and messages[-1].get("role") == "user" else ""
+                        log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(final_completion, "message", "")),
+                                input_content=last_user, output_content="")
+                        return {"output": "工具已执行，但回复生成失败。", "history": messages}
                 except Exception as e:
                     duration_ms = int((time.perf_counter() - t0) * 1000)
-                    log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                    last_user = messages[-1].get("content", "") if messages and messages[-1].get("role") == "user" else ""
+                    log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "error", duration_ms, str(e),
+                            input_content=last_user, output_content="")
                     raise
-                if getattr(final_completion, "status_code", 200) == 200:
-                    final_msg = final_completion.choices[0].message
-                    output = final_msg.content or ""
-                    messages.append(_message_to_dict(final_msg))
-                    return {"output": output, "history": messages}
-                else:
-                    return {"output": "工具已执行，但回复生成失败。", "history": messages}
             
             else:
                 # 回退：LLM 可能将工具调用以文本形式输出，尝试解析并执行
@@ -353,7 +344,6 @@ class OrderAgent:
                         mcp_tool_name = skill_name.replace("_", "-")
                         tool_result = self._invoke_tool(mcp_tool_name, "order-mcp-server", arguments, req_id=req_id)
                         if any(kw in tool_result for kw in ["库存不足", "售罄", "缺货"]):
-                            print(f"[OrderAgent] 文本解析回退: 检测到库存不足，直接返回", file=sys.stderr, flush=True)
                             return {"output": tool_result, "history": messages}
                         # 成功则让 LLM 生成友好回复
                         messages.append({"role": "assistant", "content": content})
@@ -363,20 +353,25 @@ class OrderAgent:
                             final = Completions.create(model=DASHSCOPE_MODEL, messages=messages)
                             duration_ms = int((time.perf_counter() - t0) * 1000)
                             if getattr(final, "status_code", 200) == 200:
-                                log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "success", duration_ms)
-                            else:
-                                log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(final, "message", "")))
+                                out = final.choices[0].message.content or ""
+                                log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "success", duration_ms,
+                                        input_content=messages[-1], output_content=out)
+                                return {"output": out, "history": messages}
+                            log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(final, "message", "")),
+                                    input_content=messages[-1], output_content="")
                         except Exception as e:
                             duration_ms = int((time.perf_counter() - t0) * 1000)
-                            log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                            log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "error", duration_ms, str(e),
+                                    input_content=messages[-1], output_content="")
                             raise
-                        if getattr(final, "status_code", 200) == 200:
-                            return {"output": final.choices[0].message.content or "", "history": messages}
                         return {"output": tool_result, "history": messages}
                     except Exception as e:
                         return {"output": f"工具调用异常: {str(e)}", "history": messages}
+                out = getattr(message, "content", None) or (message.get("content") if isinstance(message, dict) else "") or ""
+                log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "success", duration_ms,
+                        input_content=user_input, output_content=out)
                 messages.append(_message_to_dict(message))
-                return {"output": getattr(message, "content", None) or (message.get("content") if isinstance(message, dict) else "") or "", "history": messages}
+                return {"output": out, "history": messages}
             
         except Exception as e:
             # 打印详细堆栈以便排查
@@ -390,31 +385,20 @@ class OrderAgent:
         a2a_server = A2AServer(agent_name=self.agent_name, port=port)
         sessions = {}
 
-        def handle_request(data: Dict):
+        def handle_request(data: Dict) -> str:
             user_input = data.get("input", "")
             user_id = str(data.get("user_id", "unknown"))
             role = data.get("role", "customer")
             chat_id = data.get("chat_id", "default")
             req_id = data.get("req_id")
             
-            t0 = time.perf_counter()
-            try:
-                session_key = f"{user_id}_{chat_id}"
-                history = sessions.get(session_key, [])
-                
-                result = self.chat(user_input, user_id, role, history, req_id=req_id)
-                sessions[session_key] = result["history"][-20:]
-                
-                duration_ms = int((time.perf_counter() - t0) * 1000)
-                log_access(req_id or "", "A2A", "chat", "200", user_id, chat_id, duration_ms)
-                
-                if result.get("pending_action"):
-                    return {"output": result["output"], "pending_action": result["pending_action"]}
-                return result["output"]
-            except Exception as e:
-                duration_ms = int((time.perf_counter() - t0) * 1000)
-                log_access(req_id or "", "A2A", "chat", "500", user_id, chat_id, duration_ms)
-                raise
+            session_key = f"{user_id}_{chat_id}"
+            history = sessions.get(session_key, [])
+            
+            result = self.chat(user_input, user_id, role, history, req_id=req_id)
+            sessions[session_key] = result["history"][-20:]
+            
+            return result["output"]
         
         a2a_server.set_handler(handle_request)
         print(f"{self.agent_name} A2A Server (Stateless) 启动在 http://{host}:{port}", file=sys.stderr, flush=True)

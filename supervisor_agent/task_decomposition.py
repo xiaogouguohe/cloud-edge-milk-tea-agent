@@ -123,8 +123,9 @@ class TaskDecompositionPlanner:
             )
             duration_ms = int((time.perf_counter() - t0) * 1000)
             if response.status_code == 200:
-                log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "success", duration_ms)
                 result_text = response.output.choices[0].message.content.strip()
+                log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "success", duration_ms,
+                        input_content=user_input, output_content=result_text)
                 # 提取 JSON
                 json_match = re.search(r'\{.*?\}', result_text, re.DOTALL)
                 if json_match:
@@ -159,12 +160,15 @@ class TaskDecompositionPlanner:
                         
                         return subtasks
                 else:
-                    log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, "parse_failed")
+                    log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, "parse_failed",
+                            input_content=user_input, output_content=result_text)
             else:
-                log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(response, "message", "")))
+                log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(response, "message", "")),
+                        input_content=user_input, output_content="")
         except Exception as e:
             duration_ms = int((time.perf_counter() - t0) * 1000)
-            log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+            log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, str(e),
+                    input_content=user_input, output_content="")
             print(f"[TaskDecomposition] 任务分解失败: {str(e)}", file=sys.stderr, flush=True)
             import traceback
             traceback.print_exc(file=sys.stderr)

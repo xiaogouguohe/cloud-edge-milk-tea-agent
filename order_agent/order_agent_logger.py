@@ -5,9 +5,10 @@ Order Agent 日志 - 访问日志 + 回源日志 + LLM 交互日志
 - 回源日志: logs/order_agent_backend.log
 - LLM 交互: logs/order_agent_llm.log
 """
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 _LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
 _LOGS_DIR.mkdir(exist_ok=True)
@@ -69,6 +70,12 @@ def log_backend(
     _BACKEND_FILE.flush()
 
 
+def _truncate(s: str, max_len: int = 2000) -> str:
+    """截断并安全化，用于 input/output 字段"""
+    s = _safe(s)
+    return s[:max_len] + ("..." if len(s) > max_len else "")
+
+
 def log_llm(
     req_id: str,
     operation: str,
@@ -76,10 +83,12 @@ def log_llm(
     status: str,
     duration_ms: Optional[int] = None,
     error: str = "",
+    input_content: Any = "",
+    output_content: Any = "",
 ) -> None:
     """
     LLM 交互日志：记录与 DashScope 等 LLM 的调用，写入 logs/order_agent_llm.log
-    字段：req_id	timestamp	operation	model	status	duration_ms	error
+    字段：req_id	timestamp	operation	model	status	duration_ms	error	input	output
     """
     parts = [req_id or "", _ts(), operation, model, status]
     if duration_ms is not None:
@@ -87,5 +96,9 @@ def log_llm(
     else:
         parts.append("")
     parts.append(_safe(error))
+    inp = input_content if isinstance(input_content, str) else json.dumps(input_content, ensure_ascii=False)
+    out = output_content if isinstance(output_content, str) else json.dumps(output_content, ensure_ascii=False)
+    parts.append(_truncate(inp))
+    parts.append(_truncate(out))
     _LLM_FILE.write("\t".join(parts) + "\n")
     _LLM_FILE.flush()
