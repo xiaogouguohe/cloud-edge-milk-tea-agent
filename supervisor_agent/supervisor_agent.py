@@ -121,9 +121,9 @@ class SupervisorAgent:
 【路由规则】
 - 用户明确表达下单、点单、购买、查订单、改订单 → order_agent
 - 上一轮助手在询问订单/规格确认（如糖度、冰度、数量），用户回复是确认/肯定（如：是的、好、一样、可以、嗯嗯）→ order_agent
-- 用户咨询产品、活动、价格、推荐 → consult_agent
+- 用户咨询产品、活动、价格、推荐（需有具体咨询内容）→ consult_agent
 - 用户反馈、投诉、建议 → feedback_agent
-- 一般闲聊、无法判断 → None
+- 简单问候（你好、嗨、在吗、早上好等）、一般闲聊、无法判断 → None
 
 请只返回：order_agent / consult_agent / feedback_agent / None"""
 
