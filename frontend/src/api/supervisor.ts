@@ -82,6 +82,30 @@ export const setIdentity = async (
   return data
 }
 
+/** 仅卸载内存，不删库。退出登录时调用。 */
+export const unloadSession = async (
+  userId: string,
+  chatId: string = 'default'
+): Promise<{ status: string; message: string }> => {
+  const { data } = await axios.post(`${API_BASE}/unload`, null, {
+    params: { user_id: userId, chat_id: chatId },
+  })
+  return data
+}
+
+/** 获取会话历史，用于登录后加载展示 */
+export const getSessionHistory = async (
+  userId: string,
+  chatId: string = 'default'
+): Promise<{ role: string | null; history: Array<{ role: string; content: string }> }> => {
+  const { data } = await axios.get<{ role: string | null; history: Array<{ role: string; content: string }> }>(
+    `${API_BASE}/session`,
+    { params: { user_id: userId, chat_id: chatId } }
+  )
+  return data
+}
+
+/** 清空会话并删除持久化。用于「新对话」按钮。 */
 export const clearSession = async (
   userId: string,
   chatId: string = 'default'

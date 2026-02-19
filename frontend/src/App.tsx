@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { chat, clearSession, setIdentity, productUpdate } from './api/supervisor'
+import { chat, clearSession, unloadSession, getSessionHistory, setIdentity, productUpdate } from './api/supervisor'
 import type { PendingActionProductUpdate } from './api/supervisor'
 import './App.css'
 
@@ -58,6 +58,17 @@ function App() {
       setRole(loginRole)
       setShowLoginModal(false)
       setLoginAccountId('')
+      const { history } = await getSessionHistory(accountId, CHAT_ID)
+      if (history?.length) {
+        setMessages(
+          history.map((m) => ({
+            id: crypto.randomUUID(),
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            timestamp: new Date(),
+          }))
+        )
+      }
     } catch {
       setLoginError('登录失败，请稍后重试')
     }
@@ -66,7 +77,7 @@ function App() {
   const handleLogout = async () => {
     if (userId) {
       try {
-        await clearSession(userId, CHAT_ID)
+        await unloadSession(userId, CHAT_ID)
       } catch {
         // ignore
       }

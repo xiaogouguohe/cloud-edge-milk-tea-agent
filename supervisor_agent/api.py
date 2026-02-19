@@ -127,9 +127,28 @@ async def set_identity(request: SetIdentityRequest):
     save_session(session_id, request.user_id, request.chat_id or "default", agent.role, agent.history)
     return {"status": "success", "role": request.role}
 
+@app.post("/api/unload")
+async def unload_session(user_id: str, chat_id: str = "default"):
+    """仅从内存卸载会话，不删除数据库。退出登录时调用，下次登录会从数据库恢复。"""
+    session_id = f"{user_id}_{chat_id}"
+    if session_id in sessions:
+        del sessions[session_id]
+    return {"status": "success", "message": f"Session {session_id} unloaded"}
+
+
+@app.get("/api/session")
+async def get_session(user_id: str, chat_id: str = "default"):
+    """获取会话状态（含对话历史），用于登录后加载展示。优先从内存取，否则从数据库加载。"""
+    session_id = f"{user_id}_{chat_id}"
+    agent = _get_or_create_agent(session_id, user_id, chat_id or "default")
+    # 过滤掉 system 消息，只返回 user/assistant 供前端展示
+    display_history = [{"role": m["role"], "content": m["content"]} for m in agent.history if m.get("role") in ("user", "assistant")]
+    return {"role": agent.role, "history": display_history}
+
+
 @app.post("/api/clear")
 async def clear_session(user_id: str, chat_id: str = "default"):
-    """清空会话历史，并删除持久化数据。下次对话将重新开始。"""
+    """清空会话历史，并删除持久化数据。用于「新对话」按钮，下次对话将重新开始。"""
     session_id = f"{user_id}_{chat_id}"
     if session_id in sessions:
         sessions[session_id].clear_history()
