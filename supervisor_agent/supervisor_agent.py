@@ -1,5 +1,6 @@
 """
 监督者智能体 - 负责路由和协调子智能体
+使用结构化输出（Pydantic + Function Calling）进行意图识别，与 AgentScope 方式一致
 """
 import sys
 import json
@@ -7,13 +8,18 @@ import time
 from pathlib import Path
 from typing import List, Dict, Optional
 import dashscope
-from dashscope import Generation
+from dashscope.aigc.chat_completion import Completions
 
 # 添加项目根目录到路径，以便导入 config
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
+from supervisor_agent.route_schema import ROUTE_TOOL, RouteResult
+
+# 兼容旧版 dashscope：Completions 需要 base_compatible_api_url
+if not hasattr(dashscope, "base_compatible_api_url"):
+    dashscope.base_compatible_api_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 from service_discovery import ServiceDiscovery
 from a2a.client import A2AClient
 from supervisor_agent.api_logger import log_llm, log_backend
@@ -91,23 +97,23 @@ class SupervisorAgent:
     
     def _route_by_llm(self, user_input: str, req_id: Optional[str] = None) -> str:
         """
-        使用 LLM 进行智能路由判断，结合对话上下文以识别确认类回复
+        使用 LLM 进行智能路由判断，结合对话上下文以识别确认类回复。
+        采用结构化输出（Pydantic + Function Calling），与 AgentScope 方式一致。
         """
-        # 提取最近 4 轮对话作为上下文（排除 system）
+        # 提取最近 6 条对话作为上下文（排除 system）
         context_parts = []
-        for msg in self.history[-6:]:  # 最多取最近 6 条
+        for msg in self.history[-6:]:
             if msg.get("role") == "system":
                 continue
             role = "用户" if msg.get("role") == "user" else "助手"
             content = msg.get("content", "")
             if isinstance(content, str) and content:
-                # 去掉 [customer] 等前缀便于阅读
                 if content.startswith("[") and "]" in content:
                     content = content.split("]", 1)[-1].strip()
                 context_parts.append(f"- {role}：{content[:200]}{'...' if len(content) > 200 else ''}")
         context_str = "\n".join(context_parts) if context_parts else "（无历史）"
         
-        prompt = f"""你是云边奶茶铺的监督者，需要根据用户请求和对话上下文，判断应路由到哪个子智能体。
+        user_content = f"""你是云边奶茶铺的监督者，需要根据用户请求和对话上下文，判断应路由到哪个子智能体。
 
 【可用子智能体】
 1. order_agent - 菜单/库存/订单：查菜单、有哪些奶茶、在售、在卖、库存、价格（菜单价）、下单、点单、购买、查订单
@@ -130,41 +136,52 @@ class SupervisorAgent:
 【重要】菜单/库存 vs 产品咨询 vs 闲聊：
 - 「有哪些奶茶」「在卖什么」「库存」「有货吗」→ order_agent（查数据）
 - 「桂花云露好喝吗」「怎么冲泡」「有什么活动」→ consult_agent（咨询介绍）
-- 「你好」「嗨」「在吗」等纯问候、闲聊 → consult_agent
-
-【示例】「能帮忙看下有哪些奶茶还在卖呢」→ order_agent；「你好，桂花云露口感怎么样」→ consult_agent；「你好」→ consult_agent
-
-请只返回：order_agent / consult_agent / feedback_agent"""
+- 「你好」「嗨」「在吗」等纯问候、闲聊 → consult_agent"""
 
         t0 = time.perf_counter()
         try:
-            response = Generation.call(
+            completion = Completions.create(
                 model=DASHSCOPE_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": user_content}],
                 temperature=0.1,
-                result_format='message'
+                extra_body={
+                    "tools": [ROUTE_TOOL],
+                    "tool_choice": {"type": "function", "function": {"name": "generate_structured_output"}},
+                },
             )
             duration_ms = int((time.perf_counter() - t0) * 1000)
-            if response.status_code == 200:
-                result = response.output.choices[0].message.content.strip()
-                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "success", duration_ms,
-                        input_content=user_input, output_content=result)
-                result = result.lower().replace(" ", "_").replace("\"", "").replace("'", "")
-                if result in ["order_agent", "consult_agent", "feedback_agent"]:
-                    return result
-                for agent in ["order_agent", "consult_agent", "feedback_agent"]:
-                    if result.startswith(agent):
-                        return agent
-                # 解析失败时默认 consult_agent（与 Alibaba demo 一致，闲聊走 consult）
+            
+            if getattr(completion, "status_code", 200) != 200:
+                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms,
+                        str(getattr(completion, "message", "")), input_content=user_input, output_content="")
                 return "consult_agent"
-            else:
-                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(response.message),
-                        input_content=user_input, output_content="")
+            
+            message = completion.choices[0].message
+            tool_calls = getattr(message, "tool_calls", None) or []
+            
+            if tool_calls:
+                tc = tool_calls[0]
+                fn = tc.get("function", {}) if isinstance(tc, dict) else getattr(tc, "function", None)
+                if fn is None:
+                    fn = {}
+                args_str = fn.get("arguments", "") if isinstance(fn, dict) else getattr(fn, "arguments", "")
+                try:
+                    args = json.loads(args_str or "{}")
+                    parsed = RouteResult.model_validate(args)
+                    result = parsed.target_agent
+                    log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "success", duration_ms,
+                            input_content=user_input, output_content=result)
+                    return result
+                except (json.JSONDecodeError, Exception) as e:
+                    log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(e),
+                            input_content=user_input, output_content=args_str or "")
+            
+            log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, "no tool_calls",
+                    input_content=user_input, output_content="")
         except Exception as e:
             duration_ms = int((time.perf_counter() - t0) * 1000)
             log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(e),
                     input_content=user_input, output_content="")
-        # 异常时默认 consult_agent（闲聊走 consult）
         return "consult_agent"
     
     def call_sub_agent(self, agent_name: str, user_input: str, force_role: Optional[str] = None, req_id: Optional[str] = None) -> str:
