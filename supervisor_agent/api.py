@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import sys
-import json
+import time
 import requests
 import uuid
 from pathlib import Path
@@ -14,6 +14,7 @@ sys.path.insert(0, str(project_root))
 
 from supervisor_agent.supervisor_agent import SupervisorAgent
 from supervisor_agent.session_store import save_session, load_session, delete_session
+from supervisor_agent.api_logger import log_access, log_backend
 
 app = FastAPI(title="Milk Tea Supervisor API")
 
@@ -72,18 +73,30 @@ def _get_req_id(request: Request) -> str:
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, req: Request):
     req_id = _get_req_id(req)
+    t0 = time.perf_counter()
+    session_id = f"{request.user_id}_{request.chat_id}"
     try:
-        print(json.dumps({"req_id": req_id, "layer": "supervisor_api", "event": "chat_request", "user_id": request.user_id, "chat_id": request.chat_id}, ensure_ascii=False), file=sys.stderr, flush=True)
-        session_id = f"{request.user_id}_{request.chat_id}"
         agent = _get_or_create_agent(session_id, request.user_id, request.chat_id or "default")
         
         if request.role:
             agent.role = request.role
         
-        result = agent.chat(user_input=request.message, req_id=req_id)
+        # 回源：调用 supervisor_agent
+        t_backend = time.perf_counter()
+        try:
+            result = agent.chat(user_input=request.message, req_id=req_id)
+            duration_backend = int((time.perf_counter() - t_backend) * 1000)
+            log_backend(req_id, "supervisor_agent", "chat", "success", duration_ms=duration_backend)
+        except Exception as e:
+            duration_backend = int((time.perf_counter() - t_backend) * 1000)
+            log_backend(req_id, "supervisor_agent", "chat", "error", duration_ms=duration_backend, error=str(e))
+            raise
         
         # 持久化短期记忆（进程退出后可恢复）
         save_session(session_id, request.user_id, request.chat_id or "default", agent.role, agent.history)
+        
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        log_access(req_id, "POST", "/api/chat", "200", request.user_id, request.chat_id or "default", duration_ms)
         
         if isinstance(result, dict):
             reply = result.get("output", "")
@@ -94,14 +107,16 @@ async def chat(request: ChatRequest, req: Request):
                 role=agent.role,
                 pending_action=pending_action
             )
-        print(json.dumps({"req_id": req_id, "layer": "supervisor_api", "event": "chat_response", "session_id": session_id}, ensure_ascii=False), file=sys.stderr, flush=True)
         return ChatResponse(
             reply=result,
             session_id=session_id,
             role=agent.role
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        print(json.dumps({"req_id": req_id, "layer": "supervisor_api", "event": "chat_error", "error": str(e)}, ensure_ascii=False), file=sys.stderr, flush=True)
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        log_access(req_id, "POST", "/api/chat", "500", request.user_id, request.chat_id or "default", duration_ms)
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -136,11 +151,14 @@ async def product_update(req: ProductUpdateRequest, http_req: Request):
     if req.price is None and req.stock is None:
         raise HTTPException(status_code=400, detail="请至少指定 price 或 stock")
     req_id = _get_req_id(http_req)
+    t0 = time.perf_counter()
     try:
         from service_discovery import ServiceDiscovery
         sd = ServiceDiscovery(method="config")
         svc = sd.discover("order-mcp-server")
         if not svc:
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            log_access(req_id, "POST", "/api/product/update", "503", duration_ms=duration_ms)
             raise HTTPException(status_code=503, detail="order-mcp-server 不可用")
         url = f"{svc['url']}/mcp/tools/order-update-product/invoke"
         params = {"productName": req.productName}
@@ -151,15 +169,34 @@ async def product_update(req: ProductUpdateRequest, http_req: Request):
         headers = {"Content-Type": "application/json"}
         if req_id:
             headers["X-Request-Id"] = req_id
-        resp = requests.post(url, json={"parameters": params}, headers=headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("status") != "success":
-            raise HTTPException(status_code=400, detail=data.get("error", "修改失败"))
-        result = data.get("result", "")
-        return {"status": "success", "message": result}
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=503, detail=f"调用订单服务失败: {str(e)}")
+        t_backend = time.perf_counter()
+        try:
+            resp = requests.post(url, json={"parameters": params}, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            duration_backend = int((time.perf_counter() - t_backend) * 1000)
+            if data.get("status") != "success":
+                log_backend(req_id, "order-mcp-server", "order-update-product", "error", duration_ms=duration_backend, error=data.get("error", "修改失败"))
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                log_access(req_id, "POST", "/api/product/update", "400", duration_ms=duration_ms)
+                raise HTTPException(status_code=400, detail=data.get("error", "修改失败"))
+            log_backend(req_id, "order-mcp-server", "order-update-product", "success", duration_ms=duration_backend)
+            result = data.get("result", "")
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            log_access(req_id, "POST", "/api/product/update", "200", duration_ms=duration_ms)
+            return {"status": "success", "message": result}
+        except requests.exceptions.RequestException as e:
+            duration_backend = int((time.perf_counter() - t_backend) * 1000)
+            log_backend(req_id, "order-mcp-server", "order-update-product", "error", duration_ms=duration_backend, error=str(e))
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            log_access(req_id, "POST", "/api/product/update", "503", duration_ms=duration_ms)
+            raise HTTPException(status_code=503, detail=f"调用订单服务失败: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        log_access(req_id, "POST", "/api/product/update", "500", duration_ms=duration_ms)
+        raise
 
 @app.get("/api/health")
 async def health_check():
