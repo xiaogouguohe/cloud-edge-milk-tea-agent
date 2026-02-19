@@ -1,0 +1,91 @@
+"""
+Order Agent 日志 - 访问日志 + 回源日志 + LLM 交互日志
+每条日志一行，字段通过 \\t 分隔
+- 访问日志: logs/order_agent_access.log
+- 回源日志: logs/order_agent_backend.log
+- LLM 交互: logs/order_agent_llm.log
+"""
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+_LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
+_LOGS_DIR.mkdir(exist_ok=True)
+_ACCESS_FILE = open(_LOGS_DIR / "order_agent_access.log", "a", encoding="utf-8")
+_BACKEND_FILE = open(_LOGS_DIR / "order_agent_backend.log", "a", encoding="utf-8")
+_LLM_FILE = open(_LOGS_DIR / "order_agent_llm.log", "a", encoding="utf-8")
+
+
+def _ts() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _safe(s: Optional[str]) -> str:
+    """字段值中的 tab 和换行替换为空格，避免破坏格式"""
+    if s is None:
+        return ""
+    return str(s).replace("\t", " ").replace("\n", " ").replace("\r", " ")
+
+
+def log_access(
+    req_id: str,
+    method: str,
+    path: str,
+    status: str,
+    user_id: str = "",
+    chat_id: str = "",
+    duration_ms: Optional[int] = None,
+) -> None:
+    """
+    访问日志：记录入站请求（A2A），写入 logs/order_agent_access.log
+    字段：req_id	timestamp	method	path	status	user_id	chat_id	duration_ms
+    """
+    parts = [req_id or "", _ts(), method, path, status, _safe(user_id), _safe(chat_id)]
+    if duration_ms is not None:
+        parts.append(str(duration_ms))
+    _ACCESS_FILE.write("\t".join(parts) + "\n")
+    _ACCESS_FILE.flush()
+
+
+def log_backend(
+    req_id: str,
+    target: str,
+    operation: str,
+    status: str,
+    duration_ms: Optional[int] = None,
+    error: str = "",
+) -> None:
+    """
+    回源日志：记录调用 MCP 等下游服务，写入 logs/order_agent_backend.log
+    字段：req_id	timestamp	target	operation	status	duration_ms	error
+    """
+    parts = [req_id or "", _ts(), target, operation, status]
+    if duration_ms is not None:
+        parts.append(str(duration_ms))
+    else:
+        parts.append("")
+    parts.append(_safe(error))
+    _BACKEND_FILE.write("\t".join(parts) + "\n")
+    _BACKEND_FILE.flush()
+
+
+def log_llm(
+    req_id: str,
+    operation: str,
+    model: str,
+    status: str,
+    duration_ms: Optional[int] = None,
+    error: str = "",
+) -> None:
+    """
+    LLM 交互日志：记录与 DashScope 等 LLM 的调用，写入 logs/order_agent_llm.log
+    字段：req_id	timestamp	operation	model	status	duration_ms	error
+    """
+    parts = [req_id or "", _ts(), operation, model, status]
+    if duration_ms is not None:
+        parts.append(str(duration_ms))
+    else:
+        parts.append("")
+    parts.append(_safe(error))
+    _LLM_FILE.write("\t".join(parts) + "\n")
+    _LLM_FILE.flush()

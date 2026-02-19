@@ -7,6 +7,7 @@
 """
 import sys
 import json
+import time
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import dashscope
@@ -18,6 +19,7 @@ sys.path.insert(0, str(project_root))
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
 from dashscope.aigc.chat_completion import Completions
 from mcp.client import MCPClient
+from order_agent.order_agent_logger import log_access, log_backend, log_llm
 from service_discovery import ServiceDiscovery
 from a2a.server import A2AServer
 from order_agent.skills import SKILLS_BY_ROLE
@@ -159,21 +161,21 @@ class OrderAgent:
 
     def _invoke_tool(self, tool_name: str, mcp_server: str, parameters: Dict, req_id: Optional[str] = None) -> str:
         """调用工具"""
+        t0 = time.perf_counter()
         try:
-            print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "invoke_tool", "tool": tool_name, "params": parameters}, ensure_ascii=False), file=sys.stderr, flush=True)
             result = self.mcp_client.invoke_tool(mcp_server, tool_name, parameters, req_id=req_id)
+            duration_ms = int((time.perf_counter() - t0) * 1000)
             if result.get("status") == "success":
-                tool_result = str(result.get("result", ""))
-                print(f"[OrderAgent] 工具返回(成功): {tool_result[:200]}...", file=sys.stderr, flush=True)
-                return tool_result
+                log_backend(req_id or "", mcp_server, tool_name, "success", duration_ms=duration_ms)
+                return str(result.get("result", ""))
             else:
-                err_msg = f"工具调用失败: {result.get('error', '未知错误')}"
-                print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "tool_failed", "tool": tool_name, "error": err_msg}, ensure_ascii=False), file=sys.stderr, flush=True)
-                return err_msg
+                err_msg = result.get("error", "未知错误")
+                log_backend(req_id or "", mcp_server, tool_name, "error", duration_ms=duration_ms, error=err_msg)
+                return f"工具调用失败: {err_msg}"
         except Exception as e:
-            err_msg = f"工具调用异常: {str(e)}"
-            print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "tool_error", "tool": tool_name, "error": err_msg}, ensure_ascii=False), file=sys.stderr, flush=True)
-            return err_msg
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            log_backend(req_id or "", mcp_server, tool_name, "error", duration_ms=duration_ms, error=str(e))
+            return f"工具调用异常: {str(e)}"
 
     def chat(self, user_input: str, user_id: str, role: str = "customer", history: List[Dict] = None, req_id: Optional[str] = None) -> Dict:
         """
@@ -194,11 +196,22 @@ class OrderAgent:
         
         try:
             # 3. 调用 LLM（使用 OpenAI 兼容接口，确保 tools 正确传递、返回 tool_calls 结构）
-            completion = Completions.create(
-                model=DASHSCOPE_MODEL,
-                messages=messages,
-                extra_body={"tools": current_skills},
-            )
+            t0 = time.perf_counter()
+            try:
+                completion = Completions.create(
+                    model=DASHSCOPE_MODEL,
+                    messages=messages,
+                    extra_body={"tools": current_skills},
+                )
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                if getattr(completion, "status_code", 200) == 200:
+                    log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "success", duration_ms)
+                else:
+                    log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(completion, "message", "")))
+            except Exception as e:
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                log_llm(req_id or "", "chat_with_tools", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                raise
             
             if getattr(completion, "status_code", 200) != 200:
                 return {"output": "抱歉，系统繁忙，请稍后再试。", "history": messages}
@@ -303,16 +316,25 @@ class OrderAgent:
                         messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": f"错误: {str(e)}"})
 
                 # 5. 生成最终回复
-                print(f"[OrderAgent] 工具执行完成，调用 LLM 生成最终回复", file=sys.stderr, flush=True)
-                final_completion = Completions.create(
-                    model=DASHSCOPE_MODEL,
-                    messages=messages,
-                    extra_body={"tools": current_skills},
-                )
+                t0 = time.perf_counter()
+                try:
+                    final_completion = Completions.create(
+                        model=DASHSCOPE_MODEL,
+                        messages=messages,
+                        extra_body={"tools": current_skills},
+                    )
+                    duration_ms = int((time.perf_counter() - t0) * 1000)
+                    if getattr(final_completion, "status_code", 200) == 200:
+                        log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "success", duration_ms)
+                    else:
+                        log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(final_completion, "message", "")))
+                except Exception as e:
+                    duration_ms = int((time.perf_counter() - t0) * 1000)
+                    log_llm(req_id or "", "chat_final", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                    raise
                 if getattr(final_completion, "status_code", 200) == 200:
                     final_msg = final_completion.choices[0].message
                     output = final_msg.content or ""
-                    print(f"[OrderAgent] 最终回复: {output[:150]}...", file=sys.stderr, flush=True)
                     messages.append(_message_to_dict(final_msg))
                     return {"output": output, "history": messages}
                 else:
@@ -336,7 +358,18 @@ class OrderAgent:
                         # 成功则让 LLM 生成友好回复
                         messages.append({"role": "assistant", "content": content})
                         messages.append({"role": "user", "content": f"[工具执行结果]\n{tool_result}\n请根据以上结果生成对用户的友好回复。"})
-                        final = Completions.create(model=DASHSCOPE_MODEL, messages=messages)
+                        t0 = time.perf_counter()
+                        try:
+                            final = Completions.create(model=DASHSCOPE_MODEL, messages=messages)
+                            duration_ms = int((time.perf_counter() - t0) * 1000)
+                            if getattr(final, "status_code", 200) == 200:
+                                log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "success", duration_ms)
+                            else:
+                                log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(final, "message", "")))
+                        except Exception as e:
+                            duration_ms = int((time.perf_counter() - t0) * 1000)
+                            log_llm(req_id or "", "chat_fallback", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                            raise
                         if getattr(final, "status_code", 200) == 200:
                             return {"output": final.choices[0].message.content or "", "history": messages}
                         return {"output": tool_result, "history": messages}
@@ -364,17 +397,24 @@ class OrderAgent:
             chat_id = data.get("chat_id", "default")
             req_id = data.get("req_id")
             
-            print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "a2a_request", "user_id": user_id, "chat_id": chat_id}, ensure_ascii=False), file=sys.stderr, flush=True)
-            
-            session_key = f"{user_id}_{chat_id}"
-            history = sessions.get(session_key, [])
-            
-            result = self.chat(user_input, user_id, role, history, req_id=req_id)
-            sessions[session_key] = result["history"][-20:]
-            
-            if result.get("pending_action"):
-                return {"output": result["output"], "pending_action": result["pending_action"]}
-            return result["output"]
+            t0 = time.perf_counter()
+            try:
+                session_key = f"{user_id}_{chat_id}"
+                history = sessions.get(session_key, [])
+                
+                result = self.chat(user_input, user_id, role, history, req_id=req_id)
+                sessions[session_key] = result["history"][-20:]
+                
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                log_access(req_id or "", "A2A", "chat", "200", user_id, chat_id, duration_ms)
+                
+                if result.get("pending_action"):
+                    return {"output": result["output"], "pending_action": result["pending_action"]}
+                return result["output"]
+            except Exception as e:
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                log_access(req_id or "", "A2A", "chat", "500", user_id, chat_id, duration_ms)
+                raise
         
         a2a_server.set_handler(handle_request)
         print(f"{self.agent_name} A2A Server (Stateless) 启动在 http://{host}:{port}", file=sys.stderr, flush=True)
