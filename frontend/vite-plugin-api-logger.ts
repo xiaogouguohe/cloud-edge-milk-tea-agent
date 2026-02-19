@@ -90,7 +90,9 @@ export function apiLoggerPlugin(): Plugin {
           const body = method !== 'GET' && method !== 'HEAD' ? await readBody(req) : undefined
           const headers: Record<string, string> = {}
           for (const [k, v] of Object.entries(req.headers)) {
-            if (v && k.toLowerCase() !== 'host') headers[k] = Array.isArray(v) ? v[0] : v
+            if (v && k.toLowerCase() !== 'host' && k.toLowerCase() !== 'x-request-id') {
+              headers[k] = Array.isArray(v) ? v[0] : v
+            }
           }
           headers['X-Request-Id'] = reqId
 
