@@ -36,8 +36,10 @@ class A2AServer:
                 if not data:
                     return jsonify({"error": "Invalid request"}), 400
                 data = dict(data)
-                # 全链路日志：从 header 或 body 获取 req_id，合并到 data 供 handler 使用
+                # 全链路日志：从 header 或 body 获取 req_id，合并到 data 供 handler 使用。重复 header 会合并为逗号分隔，取第一段
                 req_id = request.headers.get("X-Request-Id") or request.headers.get("x-request-id") or data.get("req_id")
+                if req_id and "," in str(req_id):
+                    req_id = str(req_id).split(",")[0].strip()
                 if req_id:
                     data["req_id"] = req_id
                 

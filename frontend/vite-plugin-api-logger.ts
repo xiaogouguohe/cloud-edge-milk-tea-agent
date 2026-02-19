@@ -86,7 +86,8 @@ export function apiLoggerPlugin(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next) => {
         const start = Date.now()
-        const reqId = (req.headers['x-request-id'] as string) || (req.headers['X-Request-Id'] as string) || genReqId()
+        let reqId = (req.headers['x-request-id'] as string) || (req.headers['X-Request-Id'] as string) || genReqId()
+        if (reqId && reqId.includes(',')) reqId = reqId.split(',')[0].trim()
         const method = req.method || 'GET'
         const path = req.url || '/'
         const userAgent = req.headers['user-agent'] || ''
@@ -107,11 +108,13 @@ export function apiLoggerPlugin(): Plugin {
           body = method !== 'GET' && method !== 'HEAD' ? await readBody(req) : undefined
           const headers: Record<string, string> = {}
           for (const [k, v] of Object.entries(req.headers)) {
-            if (v && k.toLowerCase() !== 'host' && k.toLowerCase() !== 'x-request-id') {
+            if (v && k.toLowerCase() !== 'host') {
               headers[k] = Array.isArray(v) ? v[0] : v
             }
           }
-          headers['X-Request-Id'] = reqId
+          if (!headers['x-request-id'] && !headers['X-Request-Id']) {
+            headers['X-Request-Id'] = reqId
+          }
 
           const upstream = await fetch(`${BACKEND_TARGET}${path}`, {
             method,

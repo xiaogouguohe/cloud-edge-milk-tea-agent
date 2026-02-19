@@ -44,8 +44,10 @@ class MCPServer:
         @self.app.route('/mcp/tools/<tool_name>/invoke', methods=['POST'])
         def invoke_tool(tool_name: str):
             """调用工具"""
-            # 全链路日志：从 header 读取 req_id，若无则自动生成
+            # 全链路日志：从 header 读取 req_id，若无则自动生成。重复 header 会合并为逗号分隔，取第一段
             req_id = request.headers.get("X-Request-Id") or request.headers.get("x-request-id")
+            if req_id and "," in str(req_id):
+                req_id = str(req_id).split(",")[0].strip()
             request_id = set_request_id(req_id)
             data = request.json or {}
             parameters = data.get("parameters", {})

@@ -65,8 +65,10 @@ def _get_or_create_agent(session_id: str, user_id: str, chat_id: str) -> Supervi
 
 
 def _get_req_id(request: Request) -> str:
-    """从请求头获取或生成 req_id，用于全链路日志追踪"""
+    """从请求头获取或生成 req_id，用于全链路日志追踪。重复 header 会合并为逗号分隔，取第一段"""
     rid = request.headers.get("X-Request-Id") or request.headers.get("x-request-id")
+    if rid and "," in str(rid):
+        rid = str(rid).split(",")[0].strip()
     return rid or str(uuid.uuid4()).replace("-", "")[:16]
 
 
