@@ -81,16 +81,8 @@ async def chat(request: ChatRequest, req: Request):
         if request.role:
             agent.role = request.role
         
-        # 回源：调用 supervisor_agent
-        t_backend = time.perf_counter()
-        try:
-            result = agent.chat(user_input=request.message, req_id=req_id)
-            duration_backend = int((time.perf_counter() - t_backend) * 1000)
-            log_backend(req_id, "supervisor_agent", "chat", "success", duration_ms=duration_backend)
-        except Exception as e:
-            duration_backend = int((time.perf_counter() - t_backend) * 1000)
-            log_backend(req_id, "supervisor_agent", "chat", "error", duration_ms=duration_backend, error=str(e))
-            raise
+        # agent.chat() 为同进程调用，非 HTTP 回源，不打回源日志；真正的 upstream（order_agent、order-mcp-server）由各自服务打
+        result = agent.chat(user_input=request.message, req_id=req_id)
         
         # 持久化短期记忆（进程退出后可恢复）
         save_session(session_id, request.user_id, request.chat_id or "default", agent.role, agent.history)

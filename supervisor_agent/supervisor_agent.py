@@ -3,6 +3,7 @@
 """
 import sys
 import json
+import time
 from pathlib import Path
 from typing import List, Dict, Optional
 import dashscope
@@ -15,6 +16,7 @@ sys.path.insert(0, str(project_root))
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
 from service_discovery import ServiceDiscovery
 from a2a.client import A2AClient
+from supervisor_agent.api_logger import log_llm
 
 # 设置 DashScope API Key
 dashscope.api_key = DASHSCOPE_API_KEY
@@ -96,12 +98,13 @@ class SupervisorAgent:
             return False
         return any(kw in user_input for kw in keywords)
 
-    def route_to_agent(self, user_input: str) -> Optional[str]:
+    def route_to_agent(self, user_input: str, req_id: Optional[str] = None) -> Optional[str]:
         """
         分析用户输入，判断应该路由到哪个子智能体
         
         Args:
             user_input: 用户输入
+            req_id: 请求追踪 ID
             
         Returns:
             应该调用的子智能体名称，如果不需要特定智能体则返回 None
@@ -112,7 +115,7 @@ class SupervisorAgent:
             return result
         
         # 第二步：如果关键词匹配失败，使用 LLM 判断（更智能）
-        return self._route_by_llm(user_input)
+        return self._route_by_llm(user_input, req_id=req_id)
     
     def _route_by_keywords(self, user_input: str) -> Optional[str]:
         """
@@ -155,7 +158,7 @@ class SupervisorAgent:
         
         return None
     
-    def _route_by_llm(self, user_input: str) -> Optional[str]:
+    def _route_by_llm(self, user_input: str, req_id: Optional[str] = None) -> Optional[str]:
         """
         使用 LLM 进行智能路由判断（准确但需要 API 调用）
         """
@@ -176,6 +179,7 @@ class SupervisorAgent:
 
 请只返回智能体名称（order_agent、consult_agent、feedback_agent）或 None，不要其他文字。"""
 
+        t0 = time.perf_counter()
         try:
             response = Generation.call(
                 model=DASHSCOPE_MODEL,
@@ -183,19 +187,22 @@ class SupervisorAgent:
                 temperature=0.1,  # 低温度，确保路由准确性
                 result_format='message'
             )
-            
+            duration_ms = int((time.perf_counter() - t0) * 1000)
             if response.status_code == 200:
+                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "success", duration_ms)
                 result = response.output.choices[0].message.content.strip()
                 # 清理可能的格式问题
                 result = result.lower().replace(" ", "_").replace("\"", "").replace("'", "")
                 
                 if result in ["order_agent", "consult_agent", "feedback_agent"]:
-                    print(f"[SupervisorAgent] LLM 路由判断: {user_input[:50]}... → {result}", file=sys.stderr, flush=True)
                     return result
                 elif result == "none" or result == "null":
                     return None
+            else:
+                log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(response.message))
         except Exception as e:
-            print(f"[SupervisorAgent] LLM 路由判断失败: {str(e)}", file=sys.stderr, flush=True)
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(e))
         
         return None
     
@@ -431,7 +438,7 @@ class SupervisorAgent:
                     from supervisor_agent.task_decomposition import TaskDecompositionPlanner
                     
                     planner = TaskDecompositionPlanner()
-                    subtasks = planner.decompose_task(user_input)
+                    subtasks = planner.decompose_task(user_input, req_id=req_id)
                     
                     if subtasks and len(subtasks) > 1:
                         # 复杂任务，进行分解和执行
@@ -469,7 +476,7 @@ class SupervisorAgent:
                     # 失败时回退到简单路由
             
             # 简单路由（原有逻辑）
-            target_agent = self.route_to_agent(user_input)
+            target_agent = self.route_to_agent(user_input, req_id=req_id)
             
             if target_agent:
                 # 需要特定子智能体处理
@@ -479,27 +486,30 @@ class SupervisorAgent:
                 return agent_response
             else:
                 # 一般性对话，直接使用 LLM 处理
-                response = Generation.call(
-                    model=DASHSCOPE_MODEL,
-                    messages=self.history,
-                    temperature=0.7,
-                    result_format='message'
-                )
-                
-                if response.status_code == 200:
-                    ai_message = response.output.choices[0].message.content
-                    
-                    # 添加到历史记录
-                    self.history.append({
-                        "role": "assistant",
-                        "content": ai_message
-                    })
-                    
-                    return ai_message
-                else:
-                    error_msg = f"API 调用失败: {response.message}"
-                    print(f"错误: {error_msg}")
-                    return "抱歉，处理您的请求时出现了问题，请稍后再试。"
+                t0 = time.perf_counter()
+                try:
+                    response = Generation.call(
+                        model=DASHSCOPE_MODEL,
+                        messages=self.history,
+                        temperature=0.7,
+                        result_format='message'
+                    )
+                    duration_ms = int((time.perf_counter() - t0) * 1000)
+                    if response.status_code == 200:
+                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "success", duration_ms)
+                        ai_message = response.output.choices[0].message.content
+                        self.history.append({
+                            "role": "assistant",
+                            "content": ai_message
+                        })
+                        return ai_message
+                    else:
+                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(response.message))
+                        return "抱歉，处理您的请求时出现了问题，请稍后再试。"
+                except Exception as e:
+                    duration_ms = int((time.perf_counter() - t0) * 1000)
+                    log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(e))
+                    raise
             
         except Exception as e:
             error_msg = f"处理请求时出现错误: {str(e)}"

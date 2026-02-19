@@ -3,6 +3,7 @@
 将复杂任务分解成多个子任务，并管理子任务之间的依赖关系
 """
 import sys
+import time
 from pathlib import Path
 from typing import List, Dict, Optional, Set
 import dashscope
@@ -15,6 +16,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
+from supervisor_agent.api_logger import log_llm
 
 # 设置 DashScope API Key
 dashscope.api_key = DASHSCOPE_API_KEY
@@ -65,12 +67,13 @@ class TaskDecompositionPlanner:
             "feedback_agent": "处理用户反馈、投诉和差评"
         }
     
-    def decompose_task(self, user_input: str) -> List[SubTask]:
+    def decompose_task(self, user_input: str, req_id: Optional[str] = None) -> List[SubTask]:
         """
         将用户输入分解成多个子任务
         
         Args:
             user_input: 用户输入
+            req_id: 请求追踪 ID
             
         Returns:
             子任务列表
@@ -110,6 +113,7 @@ class TaskDecompositionPlanner:
 
 只返回 JSON，不要其他文字。"""
         
+        t0 = time.perf_counter()
         try:
             response = Generation.call(
                 model=DASHSCOPE_MODEL,
@@ -117,8 +121,9 @@ class TaskDecompositionPlanner:
                 temperature=0.3,
                 result_format='message'
             )
-            
+            duration_ms = int((time.perf_counter() - t0) * 1000)
             if response.status_code == 200:
+                log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "success", duration_ms)
                 result_text = response.output.choices[0].message.content.strip()
                 # 提取 JSON
                 json_match = re.search(r'\{.*?\}', result_text, re.DOTALL)
@@ -153,7 +158,13 @@ class TaskDecompositionPlanner:
                             subtasks.append(subtask)
                         
                         return subtasks
+                else:
+                    log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, "parse_failed")
+            else:
+                log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, str(getattr(response, "message", "")))
         except Exception as e:
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            log_llm(req_id or "", "decompose_task", DASHSCOPE_MODEL, "error", duration_ms, str(e))
             print(f"[TaskDecomposition] 任务分解失败: {str(e)}", file=sys.stderr, flush=True)
             import traceback
             traceback.print_exc(file=sys.stderr)

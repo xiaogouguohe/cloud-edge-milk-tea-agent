@@ -1,7 +1,9 @@
 """
-Supervisor API 日志 - 访问日志 + 回源日志
+Supervisor API 日志 - 访问日志 + 回源日志 + LLM 交互日志
 每条日志一行，字段通过 \\t 分隔
-访问日志写入 logs/supervisor_access.log，回源日志写入 logs/supervisor_backend.log
+- 访问日志: logs/supervisor_access.log
+- 回源日志: logs/supervisor_backend.log
+- LLM 交互: logs/supervisor_llm.log
 """
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +13,7 @@ _LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
 _LOGS_DIR.mkdir(exist_ok=True)
 _ACCESS_FILE = open(_LOGS_DIR / "supervisor_access.log", "a", encoding="utf-8")
 _BACKEND_FILE = open(_LOGS_DIR / "supervisor_backend.log", "a", encoding="utf-8")
+_LLM_FILE = open(_LOGS_DIR / "supervisor_llm.log", "a", encoding="utf-8")
 
 
 def _ts() -> str:
@@ -64,3 +67,25 @@ def log_backend(
     parts.append(_safe(error))
     _BACKEND_FILE.write("\t".join(parts) + "\n")
     _BACKEND_FILE.flush()
+
+
+def log_llm(
+    req_id: str,
+    operation: str,
+    model: str,
+    status: str,
+    duration_ms: Optional[int] = None,
+    error: str = "",
+) -> None:
+    """
+    LLM 交互日志：记录与 DashScope 等 LLM 的调用，写入 logs/supervisor_llm.log
+    字段：req_id	timestamp	operation	model	status	duration_ms	error
+    """
+    parts = [req_id or "", _ts(), operation, model, status]
+    if duration_ms is not None:
+        parts.append(str(duration_ms))
+    else:
+        parts.append("")
+    parts.append(_safe(error))
+    _LLM_FILE.write("\t".join(parts) + "\n")
+    _LLM_FILE.flush()
