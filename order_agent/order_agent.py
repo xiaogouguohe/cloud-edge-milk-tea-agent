@@ -318,6 +318,23 @@ class OrderAgent:
                         if is_stock_error:
                             print(f"[OrderAgent] 检测到库存不足，直接返回: {tool_result[:100]}...", file=sys.stderr, flush=True)
                             return {"output": tool_result, "history": messages}
+
+                        # 提议修改产品：解析 JSON，构造 pending_action 供前端弹出确认卡片
+                        if skill_name == "order_propose_product_update":
+                            try:
+                                parsed = json.loads(tool_result)
+                                if parsed.get("_propose_product_update"):
+                                    pending_action = {
+                                        "type": "product_update",
+                                        "productName": parsed.get("productName", ""),
+                                        "current": parsed.get("current", {}),
+                                        "proposed": parsed.get("proposed", {}),
+                                    }
+                                    output = parsed.get("message", "请在前端确认后执行修改。")
+                                    print(f"[OrderAgent] 检测到提议修改产品，返回 pending_action: {pending_action}", file=sys.stderr, flush=True)
+                                    return {"output": output, "history": messages, "pending_action": pending_action}
+                            except (json.JSONDecodeError, TypeError):
+                                pass
                         
                     except Exception as e:
                         messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": skill_name, "content": f"错误: {str(e)}"})
@@ -419,7 +436,11 @@ class OrderAgent:
                 sessions[session_key] = result["history"][-20:]
                 duration_ms = int((time.perf_counter() - t0) * 1000)
                 rsp_body = {"output": result["output"]}
+                if result.get("pending_action"):
+                    rsp_body["pending_action"] = result["pending_action"]
                 log_access(req_id or "", "POST", "/a2a/invoke", "200", user_id, chat_id, duration_ms, request_body=data, response_body=rsp_body)
+                if result.get("pending_action"):
+                    return {"output": result["output"], "pending_action": result["pending_action"]}
                 return result["output"]
             except Exception as e:
                 duration_ms = int((time.perf_counter() - t0) * 1000)

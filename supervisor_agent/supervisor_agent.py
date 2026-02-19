@@ -450,9 +450,10 @@ class SupervisorAgent:
                         print(f"[SupervisorAgent] 单个任务: {task.description} ({task.agent})", file=sys.stderr, flush=True)
                         agent_response = self.call_sub_agent(task.agent, task.input_data.get("input", user_input), req_id=req_id)
                         
+                        content = agent_response.get("output", agent_response) if isinstance(agent_response, dict) else agent_response
                         self.history.append({
                             "role": "assistant",
-                            "content": agent_response
+                            "content": content
                         })
                         
                         return agent_response
@@ -467,6 +468,9 @@ class SupervisorAgent:
             agent_response = self.call_sub_agent(target_agent, user_input, req_id=req_id)
             content = agent_response.get("output", agent_response) if isinstance(agent_response, dict) else agent_response
             self.history.append({"role": "assistant", "content": content})
+            # 透传 pending_action 供前端弹出确认卡片（如库存修改提议）
+            if isinstance(agent_response, dict) and agent_response.get("pending_action"):
+                return {"output": content, "pending_action": agent_response["pending_action"]}
             return content
             
         except Exception as e:
