@@ -5,6 +5,23 @@ import './App.css'
 
 const CHAT_ID = 'default'
 
+function formatChatError(err: unknown): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const ax = err as { response?: { status?: number }; message?: string }
+    const status = ax.response?.status
+    if (status === 502 || status === 503)
+      return '无法连接到后端服务，请确保 Supervisor API 已启动（端口 8000）'
+    if (status === 500) return '服务器内部错误，请稍后再试'
+    if (status === 404) return '接口不存在，请检查服务配置'
+  }
+  if (err instanceof Error) {
+    if (/network|fetch|ECONNREFUSED/i.test(err.message))
+      return '网络连接失败，请确保 Supervisor API 已启动（端口 8000）'
+    return err.message
+  }
+  return '请求失败，请稍后重试'
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -126,7 +143,7 @@ function App() {
         setPendingAction(res.pending_action)
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '请求失败，请稍后重试'
+      const msg = formatChatError(err)
       setError(msg)
       setMessages((prev) => [
         ...prev,

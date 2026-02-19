@@ -109,8 +109,8 @@ class SupervisorAgent:
         prompt = f"""你是云边奶茶铺的监督者，需要根据用户请求和对话上下文，判断应路由到哪个子智能体。
 
 【可用子智能体】
-1. order_agent - 订单相关：下单、点单、购买、查询/修改订单、确认规格（糖度/冰度）等
-2. consult_agent - 产品咨询、活动、价格、冲泡指导
+1. order_agent - 菜单/库存/订单：查菜单、有哪些奶茶、在售、在卖、库存、价格（菜单价）、下单、点单、购买、查订单
+2. consult_agent - 产品咨询：产品介绍、口感、冲泡方法、活动信息、推荐（咨询某款特点）
 3. feedback_agent - 反馈、投诉、建议、差评
 
 【对话上下文】
@@ -119,11 +119,18 @@ class SupervisorAgent:
 【当前用户】{user_input}
 
 【路由规则】
-- 用户明确表达下单、点单、购买、查订单、改订单 → order_agent
-- 上一轮助手在询问订单/规格确认（如糖度、冰度、数量），用户回复是确认/肯定（如：是的、好、一样、可以、嗯嗯）→ order_agent
-- 用户咨询产品、活动、价格、推荐（需有具体咨询内容）→ consult_agent
+- 菜单/库存查询（有哪些奶茶、在售、在卖、有货吗、库存、菜单、价格表）→ order_agent
+- 下单、点单、购买、查订单、改订单、确认规格（糖度/冰度）→ order_agent
+- 上一轮助手在询问订单/规格确认，用户回复是确认/肯定（是的、好、一样、可以、嗯嗯）→ order_agent
+- 产品咨询（某款奶茶的口感、冲泡方法、活动介绍、推荐理由）→ consult_agent
 - 用户反馈、投诉、建议 → feedback_agent
-- 简单问候（你好、嗨、在吗、早上好等）、一般闲聊、无法判断 → None
+- 纯问候、无具体诉求、一般闲聊、无法判断 → None
+
+【重要】菜单/库存 vs 产品咨询：
+- 「有哪些奶茶」「在卖什么」「库存」「有货吗」→ order_agent（查数据）
+- 「桂花云露好喝吗」「怎么冲泡」「有什么活动」→ consult_agent（咨询介绍）
+
+【示例】「能帮忙看下有哪些奶茶还在卖呢」→ order_agent；「你好，桂花云露口感怎么样」→ consult_agent
 
 请只返回：order_agent / consult_agent / feedback_agent / None"""
 
@@ -143,7 +150,10 @@ class SupervisorAgent:
                 result = result.lower().replace(" ", "_").replace("\"", "").replace("'", "")
                 if result in ["order_agent", "consult_agent", "feedback_agent"]:
                     return result
-                if result == "none" or result == "null":
+                for agent in ["order_agent", "consult_agent", "feedback_agent"]:
+                    if result.startswith(agent):
+                        return agent
+                if result == "none" or result == "null" or result.startswith("none") or result.startswith("null"):
                     return None
             else:
                 log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(response.message),
