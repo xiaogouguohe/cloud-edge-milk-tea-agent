@@ -188,30 +188,39 @@ class OrderMCPServer:
             handler=self._update_product
         )
 
-    def _get_menu(self) -> str:
-        """工具：获取菜单"""
+    def _get_menu(self, _role: str = None) -> str:
+        """工具：获取菜单。店员/管理员可见具体库存数量，顾客仅见 有货/售罄"""
         try:
             products = self.order_service.get_all_products()
             if not products:
                 return "抱歉，目前没有可用的奶茶菜单。"
             
+            show_stock = _role in ("staff", "admin")
             result = "云边奶茶铺菜单 (支持冰度: 去冰/少冰/正常冰/温/热, 糖度: 无糖/微糖/半糖/少糖/标准糖):\n"
             for p in products:
-                stock_status = "有货" if p.get('stock', 0) > 0 else "售罄"
-                result += f"- {p['name']}: ¥{p['price']:.2f} ({stock_status})\n"
+                stock = p.get('stock', 0)
+                if show_stock:
+                    stock_str = f"库存{stock}件"
+                else:
+                    stock_str = "有货" if stock > 0 else "售罄"
+                result += f"- {p['name']}: ¥{p['price']:.2f} ({stock_str})\n"
             return result
         except Exception as e:
             return f"获取菜单失败: {str(e)}"
 
-    def _get_product_info(self, productName: str) -> str:
-        """工具：获取产品详情"""
+    def _get_product_info(self, productName: str, _role: str = None) -> str:
+        """工具：获取产品详情。店员/管理员可见具体库存数量，顾客仅见 有货/售罄"""
         try:
             product = self.order_service.get_product_info(productName)
             if not product:
                 return f"抱歉，未找到产品「{productName}」，请确认产品名称是否正确。"
             
-            stock_status = "有货" if product.get('stock', 0) > 0 else "售罄"
-            return f"产品：{product['name']}\n价格：¥{product['price']:.2f}\n库存状态：{stock_status}"
+            stock = product.get('stock', 0)
+            if _role in ("staff", "admin"):
+                stock_str = f"库存 {stock} 件"
+            else:
+                stock_str = "有货" if stock > 0 else "售罄"
+            return f"产品：{product['name']}\n价格：¥{product['price']:.2f}\n库存状态：{stock_str}"
         except Exception as e:
             return f"获取产品信息失败: {str(e)}"
 

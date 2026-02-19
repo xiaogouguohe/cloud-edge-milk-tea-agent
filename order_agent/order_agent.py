@@ -294,6 +294,11 @@ class OrderAgent:
                         if skill_name == "order_create_order":
                             arguments = self._normalize_order_args(arguments)
 
+                        # 菜单/产品查询：注入 _role 供 MCP 按角色返回（店员可见具体库存，顾客仅 有货/售罄）
+                        if skill_name in ("order_get_menu", "order_get_product_info"):
+                            arguments = dict(arguments)
+                            arguments["_role"] = current_role
+
                         # 执行工具 (统一调用 order-mcp-server)
                         mcp_tool_name = skill_name.replace("_", "-")
                         tool_result = self._invoke_tool(mcp_tool_name, "order-mcp-server", arguments, req_id=req_id)
