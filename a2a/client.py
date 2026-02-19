@@ -62,13 +62,19 @@ class A2AClient:
         # 2. 构建 A2A 协议请求
         url = f"{service['url']}/a2a/invoke"
         
+        # 全链路日志：从 input_data 提取 req_id，通过 header 传递（body 中保留便于 handler 使用）
+        headers = {"Content-Type": "application/json"}
+        req_id = input_data.get("req_id")
+        if req_id:
+            headers["X-Request-Id"] = req_id
+        
         # 3. 发送请求
         try:
             response = requests.post(
                 url,
                 json=input_data,
                 timeout=timeout,
-                headers={"Content-Type": "application/json"}
+                headers=headers
             )
             response.raise_for_status()
             return response.json()

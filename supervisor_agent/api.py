@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import sys
+import json
 import requests
+import uuid
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -61,16 +63,24 @@ def _get_or_create_agent(session_id: str, user_id: str, chat_id: str) -> Supervi
     return agent
 
 
+def _get_req_id(request: Request) -> str:
+    """从请求头获取或生成 req_id，用于全链路日志追踪"""
+    rid = request.headers.get("X-Request-Id") or request.headers.get("x-request-id")
+    return rid or str(uuid.uuid4()).replace("-", "")[:16]
+
+
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, req: Request):
+    req_id = _get_req_id(req)
     try:
+        print(json.dumps({"req_id": req_id, "layer": "supervisor_api", "event": "chat_request", "user_id": request.user_id, "chat_id": request.chat_id}, ensure_ascii=False), file=sys.stderr, flush=True)
         session_id = f"{request.user_id}_{request.chat_id}"
         agent = _get_or_create_agent(session_id, request.user_id, request.chat_id or "default")
         
         if request.role:
             agent.role = request.role
         
-        result = agent.chat(user_input=request.message)
+        result = agent.chat(user_input=request.message, req_id=req_id)
         
         # 持久化短期记忆（进程退出后可恢复）
         save_session(session_id, request.user_id, request.chat_id or "default", agent.role, agent.history)
@@ -84,12 +94,14 @@ async def chat(request: ChatRequest):
                 role=agent.role,
                 pending_action=pending_action
             )
+        print(json.dumps({"req_id": req_id, "layer": "supervisor_api", "event": "chat_response", "session_id": session_id}, ensure_ascii=False), file=sys.stderr, flush=True)
         return ChatResponse(
             reply=result,
             session_id=session_id,
             role=agent.role
         )
     except Exception as e:
+        print(json.dumps({"req_id": req_id, "layer": "supervisor_api", "event": "chat_error", "error": str(e)}, ensure_ascii=False), file=sys.stderr, flush=True)
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -119,10 +131,11 @@ class ProductUpdateRequest(BaseModel):
     stock: Optional[int] = None
 
 @app.post("/api/product/update")
-async def product_update(req: ProductUpdateRequest):
+async def product_update(req: ProductUpdateRequest, http_req: Request):
     """执行产品修改（供前端确认按钮和测试直接调用，绕过前端交互）"""
     if req.price is None and req.stock is None:
         raise HTTPException(status_code=400, detail="请至少指定 price 或 stock")
+    req_id = _get_req_id(http_req)
     try:
         from service_discovery import ServiceDiscovery
         sd = ServiceDiscovery(method="config")
@@ -135,7 +148,10 @@ async def product_update(req: ProductUpdateRequest):
             params["price"] = req.price
         if req.stock is not None:
             params["stock"] = req.stock
-        resp = requests.post(url, json={"parameters": params}, timeout=10)
+        headers = {"Content-Type": "application/json"}
+        if req_id:
+            headers["X-Request-Id"] = req_id
+        resp = requests.post(url, json={"parameters": params}, headers=headers, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         if data.get("status") != "success":

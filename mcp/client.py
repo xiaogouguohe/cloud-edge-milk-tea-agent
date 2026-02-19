@@ -53,7 +53,7 @@ class MCPClient:
             raise ConnectionError(f"Failed to list tools from {mcp_server_name}: {str(e)}")
     
     def invoke_tool(self, mcp_server_name: str, tool_name: str, 
-                   parameters: Dict, timeout: int = 30) -> Dict:
+                   parameters: Dict, timeout: int = 30, req_id: Optional[str] = None) -> Dict:
         """
         调用 MCP Server 的工具
         
@@ -62,6 +62,7 @@ class MCPClient:
             tool_name: 工具名称
             parameters: 工具参数
             timeout: 超时时间（秒）
+            req_id: 全链路追踪 ID，会通过 X-Request-Id header 传递
             
         Returns:
             工具执行结果
@@ -72,12 +73,16 @@ class MCPClient:
         
         url = f"{service['url']}/mcp/tools/{tool_name}/invoke"
         
+        headers = {"Content-Type": "application/json"}
+        if req_id:
+            headers["X-Request-Id"] = req_id
+        
         try:
             response = requests.post(
                 url,
                 json={"parameters": parameters},
                 timeout=timeout,
-                headers={"Content-Type": "application/json"}
+                headers=headers
             )
             if response.status_code == 404:
                 try:

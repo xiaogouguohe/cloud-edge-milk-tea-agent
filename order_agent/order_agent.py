@@ -6,10 +6,10 @@
 以确保 tools 参数正确传递、模型返回 tool_calls 结构而非将工具调用写在 content 文本中。
 """
 import sys
+import json
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import dashscope
-import json
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
@@ -157,25 +157,25 @@ class OrderAgent:
             }
         return arguments
 
-    def _invoke_tool(self, tool_name: str, mcp_server: str, parameters: Dict) -> str:
+    def _invoke_tool(self, tool_name: str, mcp_server: str, parameters: Dict, req_id: Optional[str] = None) -> str:
         """调用工具"""
         try:
-            print(f"[OrderAgent] 调用工具: {tool_name}, 参数: {parameters}", file=sys.stderr, flush=True)
-            result = self.mcp_client.invoke_tool(mcp_server, tool_name, parameters)
+            print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "invoke_tool", "tool": tool_name, "params": parameters}, ensure_ascii=False), file=sys.stderr, flush=True)
+            result = self.mcp_client.invoke_tool(mcp_server, tool_name, parameters, req_id=req_id)
             if result.get("status") == "success":
                 tool_result = str(result.get("result", ""))
                 print(f"[OrderAgent] 工具返回(成功): {tool_result[:200]}...", file=sys.stderr, flush=True)
                 return tool_result
             else:
                 err_msg = f"工具调用失败: {result.get('error', '未知错误')}"
-                print(f"[OrderAgent] 工具返回(失败): {err_msg}", file=sys.stderr, flush=True)
+                print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "tool_failed", "tool": tool_name, "error": err_msg}, ensure_ascii=False), file=sys.stderr, flush=True)
                 return err_msg
         except Exception as e:
             err_msg = f"工具调用异常: {str(e)}"
-            print(f"[OrderAgent] 工具异常: {err_msg}", file=sys.stderr, flush=True)
+            print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "tool_error", "tool": tool_name, "error": err_msg}, ensure_ascii=False), file=sys.stderr, flush=True)
             return err_msg
 
-    def chat(self, user_input: str, user_id: str, role: str = "customer", history: List[Dict] = None) -> Dict:
+    def chat(self, user_input: str, user_id: str, role: str = "customer", history: List[Dict] = None, req_id: Optional[str] = None) -> Dict:
         """
         处理用户输入并返回回复（请求级无状态实现）
         """
@@ -265,7 +265,7 @@ class OrderAgent:
 
                         # 执行工具 (统一调用 order-mcp-server)
                         mcp_tool_name = skill_name.replace("_", "-")
-                        tool_result = self._invoke_tool(mcp_tool_name, "order-mcp-server", arguments)
+                        tool_result = self._invoke_tool(mcp_tool_name, "order-mcp-server", arguments, req_id=req_id)
                         
                         messages.append({
                             "role": "tool",
@@ -329,7 +329,7 @@ class OrderAgent:
                         arguments["userId"] = int(user_id)
                     try:
                         mcp_tool_name = skill_name.replace("_", "-")
-                        tool_result = self._invoke_tool(mcp_tool_name, "order-mcp-server", arguments)
+                        tool_result = self._invoke_tool(mcp_tool_name, "order-mcp-server", arguments, req_id=req_id)
                         if any(kw in tool_result for kw in ["库存不足", "售罄", "缺货"]):
                             print(f"[OrderAgent] 文本解析回退: 检测到库存不足，直接返回", file=sys.stderr, flush=True)
                             return {"output": tool_result, "history": messages}
@@ -362,11 +362,14 @@ class OrderAgent:
             user_id = str(data.get("user_id", "unknown"))
             role = data.get("role", "customer")
             chat_id = data.get("chat_id", "default")
+            req_id = data.get("req_id")
+            
+            print(json.dumps({"req_id": req_id or "", "layer": "order_agent", "event": "a2a_request", "user_id": user_id, "chat_id": chat_id}, ensure_ascii=False), file=sys.stderr, flush=True)
             
             session_key = f"{user_id}_{chat_id}"
             history = sessions.get(session_key, [])
             
-            result = self.chat(user_input, user_id, role, history)
+            result = self.chat(user_input, user_id, role, history, req_id=req_id)
             sessions[session_key] = result["history"][-20:]
             
             if result.get("pending_action"):

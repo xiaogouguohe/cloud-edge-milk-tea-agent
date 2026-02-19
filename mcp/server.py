@@ -1,6 +1,8 @@
 """
 MCP Server - 提供工具给 Agent 使用
 """
+import json
+import sys
 from flask import Flask, request, jsonify
 from typing import Dict, List
 from .tool import Tool, ToolDefinition
@@ -42,9 +44,12 @@ class MCPServer:
         @self.app.route('/mcp/tools/<tool_name>/invoke', methods=['POST'])
         def invoke_tool(tool_name: str):
             """调用工具"""
-            request_id = set_request_id()
+            # 全链路日志：从 header 读取 req_id，若无则自动生成
+            req_id = request.headers.get("X-Request-Id") or request.headers.get("x-request-id")
+            request_id = set_request_id(req_id)
             data = request.json or {}
             parameters = data.get("parameters", {})
+            print(json.dumps({"req_id": request_id, "layer": "mcp_server", "event": "tool_invoke", "tool": tool_name}, ensure_ascii=False), file=sys.stderr, flush=True)
 
             if tool_name not in self.tools:
                 log_access(tool_name, parameters, status="error", error=f"Tool {tool_name} not found")

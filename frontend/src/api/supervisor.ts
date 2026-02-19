@@ -34,20 +34,37 @@ export const productUpdate = async (params: {
   price?: number
   stock?: number
 }): Promise<{ status: string; message: string }> => {
+  const reqId = genReqId()
   const { data } = await axios.post<{ status: string; message: string }>(
     `${API_BASE}/product/update`,
-    params
+    params,
+    { headers: { 'X-Request-Id': reqId } }
   )
   return data
 }
 
+/** 生成请求追踪 ID，用于全链路日志 */
+export const genReqId = (): string =>
+  typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+    : `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+
 export const chat = async (params: ChatRequest): Promise<ChatResponse> => {
-  const { data } = await axios.post<ChatResponse>(`${API_BASE}/chat`, {
-    message: params.message,
-    user_id: params.user_id,
-    chat_id: params.chat_id ?? 'default',
-    role: params.role,
-  })
+  const reqId = genReqId()
+  const { data } = await axios.post<ChatResponse>(
+    `${API_BASE}/chat`,
+    {
+      message: params.message,
+      user_id: params.user_id,
+      chat_id: params.chat_id ?? 'default',
+      role: params.role,
+    },
+    {
+      headers: {
+        'X-Request-Id': reqId,
+      },
+    }
+  )
   return data
 }
 

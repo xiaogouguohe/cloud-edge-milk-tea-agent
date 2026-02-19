@@ -2,6 +2,7 @@
 监督者智能体 - 负责路由和协调子智能体
 """
 import sys
+import json
 from pathlib import Path
 from typing import List, Dict, Optional
 import dashscope
@@ -198,7 +199,7 @@ class SupervisorAgent:
         
         return None
     
-    def call_sub_agent(self, agent_name: str, user_input: str, force_role: Optional[str] = None) -> str:
+    def call_sub_agent(self, agent_name: str, user_input: str, force_role: Optional[str] = None, req_id: Optional[str] = None) -> str:
         """
         调用子智能体处理请求（使用 A2A 协议）
         
@@ -232,6 +233,10 @@ class SupervisorAgent:
             if agent_name == "order_agent":
                 role = force_role or self.role or "base"
                 a2a_request["role"] = role
+            
+            # 全链路日志：传递 req_id
+            if req_id:
+                a2a_request["req_id"] = req_id
             
             # 通过 A2A Client 调用子智能体
             a2a_response = self.a2a_client.call_agent(agent_name, a2a_request)
@@ -299,7 +304,7 @@ class SupervisorAgent:
         
         return False
     
-    def _execute_decomposed_tasks(self, subtasks, a2a_client) -> str:
+    def _execute_decomposed_tasks(self, subtasks, a2a_client, req_id: Optional[str] = None) -> str:
         """
         执行分解后的子任务
         
@@ -345,6 +350,10 @@ class SupervisorAgent:
                 # 合并其他输入数据
                 a2a_request.update({k: v for k, v in input_data.items() if k != "input"})
                 
+                # 全链路日志：传递 req_id
+                if req_id:
+                    a2a_request["req_id"] = req_id
+                
                 a2a_response = a2a_client.call_agent(task.agent, a2a_request)
                 
                 # 提取响应
@@ -377,7 +386,7 @@ class SupervisorAgent:
         else:
             return "任务执行失败，请稍后再试。"
     
-    def chat(self, user_input: str) -> str:
+    def chat(self, user_input: str, req_id: Optional[str] = None) -> str:
         """
         处理用户输入并返回回复
         
@@ -389,7 +398,7 @@ class SupervisorAgent:
         """
         # 1. 菜单/价格/库存查询：无需登录，所有人可访问
         if self._is_base_order_query(user_input):
-            agent_response = self.call_sub_agent("order_agent", user_input, force_role="base")
+            agent_response = self.call_sub_agent("order_agent", user_input, force_role="base", req_id=req_id)
             self.history.append({"role": "user", "content": user_input})
             self.history.append({"role": "assistant", "content": agent_response})
             return agent_response
@@ -432,7 +441,7 @@ class SupervisorAgent:
                         sorted_tasks = planner.topological_sort(subtasks)
                         
                         # 执行所有子任务
-                        final_result = self._execute_decomposed_tasks(sorted_tasks, self.a2a_client)
+                        final_result = self._execute_decomposed_tasks(sorted_tasks, self.a2a_client, req_id=req_id)
                         
                         # 添加到历史记录
                         self.history.append({
@@ -445,7 +454,7 @@ class SupervisorAgent:
                         # 单个任务，直接执行
                         task = subtasks[0]
                         print(f"[SupervisorAgent] 单个任务: {task.description} ({task.agent})", file=sys.stderr, flush=True)
-                        agent_response = self.call_sub_agent(task.agent, task.input_data.get("input", user_input))
+                        agent_response = self.call_sub_agent(task.agent, task.input_data.get("input", user_input), req_id=req_id)
                         
                         self.history.append({
                             "role": "assistant",
@@ -464,7 +473,7 @@ class SupervisorAgent:
             
             if target_agent:
                 # 需要特定子智能体处理
-                agent_response = self.call_sub_agent(target_agent, user_input)
+                agent_response = self.call_sub_agent(target_agent, user_input, req_id=req_id)
                 content = agent_response.get("output", agent_response) if isinstance(agent_response, dict) else agent_response
                 self.history.append({"role": "assistant", "content": content})
                 return agent_response
