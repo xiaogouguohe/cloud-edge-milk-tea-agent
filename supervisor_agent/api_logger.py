@@ -35,9 +35,9 @@ def log_access(
 ) -> None:
     """
     访问日志：记录入站请求，写入 logs/supervisor_access.log
-    字段：type	req_id	timestamp	method	path	status	user_id	chat_id	duration_ms
+    字段：req_id	timestamp	method	path	status	user_id	chat_id	duration_ms
     """
-    parts = ["ACCESS", req_id, _ts(), method, path, status, _safe(user_id), _safe(chat_id)]
+    parts = [req_id, _ts(), method, path, status, _safe(user_id), _safe(chat_id)]
     if duration_ms is not None:
         parts.append(str(duration_ms))
     _ACCESS_FILE.write("\t".join(parts) + "\n")
@@ -54,9 +54,9 @@ def log_backend(
 ) -> None:
     """
     回源日志：记录调用下游服务，写入 logs/supervisor_backend.log
-    字段：type	req_id	timestamp	target	operation	status	duration_ms	error
+    字段：req_id	timestamp	target	operation	status	duration_ms	error
     """
-    parts = ["BACKEND", req_id, _ts(), target, operation, status]
+    parts = [req_id, _ts(), target, operation, status]
     if duration_ms is not None:
         parts.append(str(duration_ms))
     else:
