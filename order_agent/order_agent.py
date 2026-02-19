@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
 from dashscope.aigc.chat_completion import Completions
 from mcp.client import MCPClient
-from order_agent.order_agent_logger import log_llm
+from order_agent.order_agent_logger import log_llm, log_access, log_backend
 from service_discovery import ServiceDiscovery
 from a2a.server import A2AServer
 from order_agent.skills import SKILLS_BY_ROLE
@@ -160,18 +160,25 @@ class OrderAgent:
 
     def _invoke_tool(self, tool_name: str, mcp_server: str, parameters: Dict, req_id: Optional[str] = None) -> str:
         """调用工具"""
+        t0 = time.perf_counter()
+        req_body = {"parameters": parameters}
         try:
             print(f"[OrderAgent] 调用工具: {tool_name}, 参数: {parameters}", file=sys.stderr, flush=True)
             result = self.mcp_client.invoke_tool(mcp_server, tool_name, parameters, req_id=req_id)
+            duration_ms = int((time.perf_counter() - t0) * 1000)
             if result.get("status") == "success":
                 tool_result = str(result.get("result", ""))
+                log_backend(req_id or "", mcp_server, tool_name, "success", duration_ms=duration_ms, request_body=req_body, response_body=result)
                 print(f"[OrderAgent] 工具返回(成功): {tool_result[:200]}...", file=sys.stderr, flush=True)
                 return tool_result
             else:
                 err_msg = f"工具调用失败: {result.get('error', '未知错误')}"
+                log_backend(req_id or "", mcp_server, tool_name, "error", duration_ms=duration_ms, error=err_msg, request_body=req_body, response_body=result)
                 print(f"[OrderAgent] 工具返回(失败): {err_msg}", file=sys.stderr, flush=True)
                 return err_msg
         except Exception as e:
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            log_backend(req_id or "", mcp_server, tool_name, "error", duration_ms=duration_ms, error=str(e), request_body=req_body, response_body={"error": str(e)})
             err_msg = f"工具调用异常: {str(e)}"
             print(f"[OrderAgent] 工具异常: {err_msg}", file=sys.stderr, flush=True)
             return err_msg
@@ -392,19 +399,25 @@ class OrderAgent:
         sessions = {}
 
         def handle_request(data: Dict) -> str:
+            t0 = time.perf_counter()
             user_input = data.get("input", "")
             user_id = str(data.get("user_id", "unknown"))
             role = data.get("role", "customer")
             chat_id = data.get("chat_id", "default")
             req_id = data.get("req_id")
-            
             session_key = f"{user_id}_{chat_id}"
             history = sessions.get(session_key, [])
-            
-            result = self.chat(user_input, user_id, role, history, req_id=req_id)
-            sessions[session_key] = result["history"][-20:]
-            
-            return result["output"]
+            try:
+                result = self.chat(user_input, user_id, role, history, req_id=req_id)
+                sessions[session_key] = result["history"][-20:]
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                rsp_body = {"output": result["output"]}
+                log_access(req_id or "", "POST", "/a2a/invoke", "200", user_id, chat_id, duration_ms, request_body=data, response_body=rsp_body)
+                return result["output"]
+            except Exception as e:
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                log_access(req_id or "", "POST", "/a2a/invoke", "500", user_id, chat_id, duration_ms, request_body=data, response_body={"error": str(e)})
+                raise
         
         a2a_server.set_handler(handle_request)
         print(f"{self.agent_name} A2A Server (Stateless) 启动在 http://{host}:{port}", file=sys.stderr, flush=True)

@@ -42,13 +42,19 @@ def log_access(
     user_id: str = "",
     chat_id: str = "",
     duration_ms: Optional[int] = None,
+    request_body: Any = "",
+    response_body: Any = "",
 ) -> None:
     """
     访问日志：记录入站请求，写入 logs/supervisor_access.log
-    字段：req_id	timestamp	method	path	status	user_id	chat_id	duration_ms
+    字段：req_id	timestamp	method	path	status	user_id	chat_id	duration_ms	request_body	response_body
     """
     parts = [_field(req_id), _ts(), _field(method), _field(path), _field(status), _field(user_id), _field(chat_id)]
     parts.append(_field(str(duration_ms)) if duration_ms is not None else "-")
+    req_s = request_body if isinstance(request_body, str) else json.dumps(request_body, ensure_ascii=False)
+    rsp_s = response_body if isinstance(response_body, str) else json.dumps(response_body, ensure_ascii=False)
+    parts.append(_truncate(req_s))
+    parts.append(_truncate(rsp_s))
     _ACCESS_FILE.write("\t".join(parts) + "\n")
     _ACCESS_FILE.flush()
 
@@ -60,14 +66,20 @@ def log_backend(
     status: str,
     duration_ms: Optional[int] = None,
     error: str = "",
+    request_body: Any = "",
+    response_body: Any = "",
 ) -> None:
     """
     回源日志：记录调用下游服务，写入 logs/supervisor_backend.log
-    字段：req_id	timestamp	target	operation	status	duration_ms	error
+    字段：req_id	timestamp	target	operation	status	duration_ms	error	request_body	response_body
     """
     parts = [_field(req_id), _ts(), _field(target), _field(operation), _field(status)]
     parts.append(_field(str(duration_ms)) if duration_ms is not None else "-")
     parts.append(_field(error))
+    req_s = request_body if isinstance(request_body, str) else json.dumps(request_body, ensure_ascii=False)
+    rsp_s = response_body if isinstance(response_body, str) else json.dumps(response_body, ensure_ascii=False)
+    parts.append(_truncate(req_s))
+    parts.append(_truncate(rsp_s))
     _BACKEND_FILE.write("\t".join(parts) + "\n")
     _BACKEND_FILE.flush()
 

@@ -88,7 +88,9 @@ async def chat(request: ChatRequest, req: Request):
         save_session(session_id, request.user_id, request.chat_id or "default", agent.role, agent.history)
         
         duration_ms = int((time.perf_counter() - t0) * 1000)
-        log_access(req_id, "POST", "/api/chat", "200", request.user_id, request.chat_id or "default", duration_ms)
+        req_body = request.model_dump(mode="json") if hasattr(request, "model_dump") else {"message": request.message, "user_id": request.user_id, "chat_id": request.chat_id, "role": request.role}
+        rsp_body = result if isinstance(result, dict) else {"output": result}
+        log_access(req_id, "POST", "/api/chat", "200", request.user_id, request.chat_id or "default", duration_ms, request_body=req_body, response_body=rsp_body)
         
         if isinstance(result, dict):
             reply = result.get("output", "")
@@ -108,7 +110,8 @@ async def chat(request: ChatRequest, req: Request):
         raise
     except Exception as e:
         duration_ms = int((time.perf_counter() - t0) * 1000)
-        log_access(req_id, "POST", "/api/chat", "500", request.user_id, request.chat_id or "default", duration_ms)
+        req_body = request.model_dump(mode="json") if hasattr(request, "model_dump") else {"message": request.message, "user_id": request.user_id}
+        log_access(req_id, "POST", "/api/chat", "500", request.user_id, request.chat_id or "default", duration_ms, request_body=req_body, response_body={"error": str(e)})
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -150,7 +153,8 @@ async def product_update(req: ProductUpdateRequest, http_req: Request):
         svc = sd.discover("order-mcp-server")
         if not svc:
             duration_ms = int((time.perf_counter() - t0) * 1000)
-            log_access(req_id, "POST", "/api/product/update", "503", duration_ms=duration_ms)
+            req_body = req.model_dump(mode="json") if hasattr(req, "model_dump") else {"productName": req.productName, "price": req.price, "stock": req.stock}
+            log_access(req_id, "POST", "/api/product/update", "503", duration_ms=duration_ms, request_body=req_body, response_body={"error": "order-mcp-server 不可用"})
             raise HTTPException(status_code=503, detail="order-mcp-server 不可用")
         url = f"{svc['url']}/mcp/tools/order-update-product/invoke"
         params = {"productName": req.productName}
@@ -167,27 +171,30 @@ async def product_update(req: ProductUpdateRequest, http_req: Request):
             resp.raise_for_status()
             data = resp.json()
             duration_backend = int((time.perf_counter() - t_backend) * 1000)
+            req_body = {"parameters": params}
             if data.get("status") != "success":
-                log_backend(req_id, "order-mcp-server", "order-update-product", "error", duration_ms=duration_backend, error=data.get("error", "修改失败"))
+                log_backend(req_id, "order-mcp-server", "order-update-product", "error", duration_ms=duration_backend, error=data.get("error", "修改失败"), request_body=req_body, response_body=data)
                 duration_ms = int((time.perf_counter() - t0) * 1000)
-                log_access(req_id, "POST", "/api/product/update", "400", duration_ms=duration_ms)
+                log_access(req_id, "POST", "/api/product/update", "400", duration_ms=duration_ms, request_body=req_body, response_body={"error": data.get("error", "修改失败")})
                 raise HTTPException(status_code=400, detail=data.get("error", "修改失败"))
-            log_backend(req_id, "order-mcp-server", "order-update-product", "success", duration_ms=duration_backend)
+            log_backend(req_id, "order-mcp-server", "order-update-product", "success", duration_ms=duration_backend, request_body=req_body, response_body=data)
             result = data.get("result", "")
             duration_ms = int((time.perf_counter() - t0) * 1000)
-            log_access(req_id, "POST", "/api/product/update", "200", duration_ms=duration_ms)
+            log_access(req_id, "POST", "/api/product/update", "200", duration_ms=duration_ms, request_body=req_body, response_body={"status": "success", "message": result})
             return {"status": "success", "message": result}
         except requests.exceptions.RequestException as e:
             duration_backend = int((time.perf_counter() - t_backend) * 1000)
-            log_backend(req_id, "order-mcp-server", "order-update-product", "error", duration_ms=duration_backend, error=str(e))
+            req_body = {"parameters": params}
+            log_backend(req_id, "order-mcp-server", "order-update-product", "error", duration_ms=duration_backend, error=str(e), request_body=req_body, response_body={"error": str(e)})
             duration_ms = int((time.perf_counter() - t0) * 1000)
-            log_access(req_id, "POST", "/api/product/update", "503", duration_ms=duration_ms)
+            log_access(req_id, "POST", "/api/product/update", "503", duration_ms=duration_ms, request_body=req_body, response_body={"error": str(e)})
             raise HTTPException(status_code=503, detail=f"调用订单服务失败: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
         duration_ms = int((time.perf_counter() - t0) * 1000)
-        log_access(req_id, "POST", "/api/product/update", "500", duration_ms=duration_ms)
+        req_body = req.model_dump(mode="json") if hasattr(req, "model_dump") else {}
+        log_access(req_id, "POST", "/api/product/update", "500", duration_ms=duration_ms, request_body=req_body, response_body={"error": str(e)})
         raise
 
 @app.get("/api/health")

@@ -253,10 +253,10 @@ class SupervisorAgent:
             try:
                 a2a_response = self.a2a_client.call_agent(agent_name, a2a_request)
                 duration_ms = int((time.perf_counter() - t0) * 1000)
-                log_backend(req_id or "", agent_name, "chat", "success", duration_ms=duration_ms)
+                log_backend(req_id or "", agent_name, "chat", "success", duration_ms=duration_ms, request_body=a2a_request, response_body=a2a_response)
             except Exception as e:
                 duration_ms = int((time.perf_counter() - t0) * 1000)
-                log_backend(req_id or "", agent_name, "chat", "error", duration_ms=duration_ms, error=str(e))
+                log_backend(req_id or "", agent_name, "chat", "error", duration_ms=duration_ms, error=str(e), request_body=a2a_request, response_body={"error": str(e)})
                 raise
             
             # 提取响应内容
@@ -377,10 +377,10 @@ class SupervisorAgent:
                 try:
                     a2a_response = a2a_client.call_agent(task.agent, a2a_request)
                     duration_ms = int((time.perf_counter() - t0) * 1000)
-                    log_backend(req_id or "", task.agent, "chat", "success", duration_ms=duration_ms)
+                    log_backend(req_id or "", task.agent, "chat", "success", duration_ms=duration_ms, request_body=a2a_request, response_body=a2a_response)
                 except Exception as e:
                     duration_ms = int((time.perf_counter() - t0) * 1000)
-                    log_backend(req_id or "", task.agent, "chat", "error", duration_ms=duration_ms, error=str(e))
+                    log_backend(req_id or "", task.agent, "chat", "error", duration_ms=duration_ms, error=str(e), request_body=a2a_request, response_body={"error": str(e)})
                     raise
                 
                 # 提取响应

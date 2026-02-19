@@ -33,6 +33,12 @@ function field(s: string | undefined): string {
   return v ? v : '-'
 }
 
+function truncate(s: string, maxLen = 2000): string {
+  const v = safe(s ?? '')
+  if (!v) return '-'
+  return v.length > maxLen ? v.slice(0, maxLen) + '...' : v
+}
+
 function genReqId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 }
@@ -43,9 +49,11 @@ function logAccess(
   path: string,
   status: number,
   durationMs: number,
-  userAgent: string = ''
+  userAgent: string = '',
+  requestBody: string = '',
+  responseBody: string = ''
 ): void {
-  const parts = [field(reqId), ts(), field(method), field(path), field(String(status)), field(userAgent), field(String(durationMs))]
+  const parts = [field(reqId), ts(), field(method), field(path), field(String(status)), field(userAgent), field(String(durationMs)), truncate(requestBody), truncate(responseBody)]
   ACCESS_STREAM.write(parts.join('\t') + '\n')
 }
 
@@ -55,9 +63,11 @@ function logBackend(
   operation: string,
   status: string,
   durationMs: number,
-  error: string = ''
+  error: string = '',
+  requestBody: string = '',
+  responseBody: string = ''
 ): void {
-  const parts = [field(reqId), ts(), field(target), field(operation), field(status), field(String(durationMs)), field(error)]
+  const parts = [field(reqId), ts(), field(target), field(operation), field(status), field(String(durationMs)), field(error), truncate(requestBody), truncate(responseBody)]
   BACKEND_STREAM.write(parts.join('\t') + '\n')
 }
 
@@ -84,15 +94,17 @@ export function apiLoggerPlugin(): Plugin {
         if (!path.startsWith('/api')) {
           res.once('finish', () => {
             const durationMs = Date.now() - start
-            logAccess(reqId, method, path, res.statusCode || 200, durationMs, userAgent)
+            logAccess(reqId, method, path, res.statusCode || 200, durationMs, userAgent, '', '')
           })
           return next()
         }
 
         // /api 请求：代理到 8000 并打回源日志
         const tBackend = Date.now()
+        let body: Buffer | undefined
+        let buf: Buffer | undefined
         try {
-          const body = method !== 'GET' && method !== 'HEAD' ? await readBody(req) : undefined
+          body = method !== 'GET' && method !== 'HEAD' ? await readBody(req) : undefined
           const headers: Record<string, string> = {}
           for (const [k, v] of Object.entries(req.headers)) {
             if (v && k.toLowerCase() !== 'host' && k.toLowerCase() !== 'x-request-id') {
@@ -110,22 +122,27 @@ export function apiLoggerPlugin(): Plugin {
           const durationBackend = Date.now() - tBackend
           const status = upstream.ok ? 'success' : 'error'
           const errMsg = upstream.ok ? '' : `HTTP ${upstream.status}`
-          logBackend(reqId, 'supervisor-api', path, status, durationBackend, errMsg)
+          const reqBodyStr = body ? (body.toString?.('utf-8') ?? String(body)) : ''
+          buf = Buffer.from(await upstream.arrayBuffer())
+          const rspBodyStr = (() => { try { return buf!.toString('utf-8') } catch { return '-' } })()
+          logBackend(reqId, 'supervisor-api', path, status, durationBackend, errMsg, reqBodyStr, rspBodyStr)
 
           res.statusCode = upstream.status
           upstream.headers.forEach((v, k) => res.setHeader(k, v))
-          const buf = Buffer.from(await upstream.arrayBuffer())
           res.end(buf)
         } catch (e) {
           const durationBackend = Date.now() - tBackend
-          logBackend(reqId, 'supervisor-api', path, 'error', durationBackend, String(e))
+          const reqBodyStr = body ? (body.toString?.('utf-8') ?? String(body)) : ''
+          logBackend(reqId, 'supervisor-api', path, 'error', durationBackend, String(e), reqBodyStr, JSON.stringify({ error: 'Proxy to backend failed' }))
           res.statusCode = 502
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ error: 'Proxy to backend failed' }))
         }
 
         const durationMs = Date.now() - start
-        logAccess(reqId, method, path, res.statusCode, durationMs, userAgent)
+        const reqBodyStr = body ? (body.toString?.('utf-8') ?? String(body)) : ''
+        const rspBodyStr = buf ? (() => { try { return buf.toString('utf-8') } catch { return '-' } })() : '-'
+        logAccess(reqId, method, path, res.statusCode, durationMs, userAgent, reqBodyStr, rspBodyStr)
       })
     },
   }
