@@ -82,13 +82,14 @@ class SupervisorAgent:
         # A2A 客户端（用于调用子智能体）
         self.a2a_client = A2AClient(service_discovery=self.service_discovery)
     
-    def route_to_agent(self, user_input: str, req_id: Optional[str] = None) -> Optional[str]:
+    def route_to_agent(self, user_input: str, req_id: Optional[str] = None) -> str:
         """
-        使用 LLM 分析用户输入及对话上下文，判断应路由到哪个子智能体
+        使用 LLM 分析用户输入及对话上下文，判断应路由到哪个子智能体。
+        与 Alibaba demo 一致：闲聊也走 consult_agent，无 None/general_chat。
         """
         return self._route_by_llm(user_input, req_id=req_id)
     
-    def _route_by_llm(self, user_input: str, req_id: Optional[str] = None) -> Optional[str]:
+    def _route_by_llm(self, user_input: str, req_id: Optional[str] = None) -> str:
         """
         使用 LLM 进行智能路由判断，结合对话上下文以识别确认类回复
         """
@@ -110,7 +111,7 @@ class SupervisorAgent:
 
 【可用子智能体】
 1. order_agent - 菜单/库存/订单：查菜单、有哪些奶茶、在售、在卖、库存、价格（菜单价）、下单、点单、购买、查订单
-2. consult_agent - 产品咨询：产品介绍、口感、冲泡方法、活动信息、推荐（咨询某款特点）
+2. consult_agent - 产品咨询、闲聊：产品介绍、口感、冲泡方法、活动信息、推荐、纯问候、一般性对话
 3. feedback_agent - 反馈、投诉、建议、差评
 
 【对话上下文】
@@ -124,15 +125,16 @@ class SupervisorAgent:
 - 上一轮助手在询问订单/规格确认，用户回复是确认/肯定（是的、好、一样、可以、嗯嗯）→ order_agent
 - 产品咨询（某款奶茶的口感、冲泡方法、活动介绍、推荐理由）→ consult_agent
 - 用户反馈、投诉、建议 → feedback_agent
-- 纯问候、无具体诉求、一般闲聊、无法判断 → None
+- 纯问候、闲聊、一般性对话、无法判断 → consult_agent
 
-【重要】菜单/库存 vs 产品咨询：
+【重要】菜单/库存 vs 产品咨询 vs 闲聊：
 - 「有哪些奶茶」「在卖什么」「库存」「有货吗」→ order_agent（查数据）
 - 「桂花云露好喝吗」「怎么冲泡」「有什么活动」→ consult_agent（咨询介绍）
+- 「你好」「嗨」「在吗」等纯问候、闲聊 → consult_agent
 
-【示例】「能帮忙看下有哪些奶茶还在卖呢」→ order_agent；「你好，桂花云露口感怎么样」→ consult_agent
+【示例】「能帮忙看下有哪些奶茶还在卖呢」→ order_agent；「你好，桂花云露口感怎么样」→ consult_agent；「你好」→ consult_agent
 
-请只返回：order_agent / consult_agent / feedback_agent / None"""
+请只返回：order_agent / consult_agent / feedback_agent"""
 
         t0 = time.perf_counter()
         try:
@@ -153,8 +155,8 @@ class SupervisorAgent:
                 for agent in ["order_agent", "consult_agent", "feedback_agent"]:
                     if result.startswith(agent):
                         return agent
-                if result == "none" or result == "null" or result.startswith("none") or result.startswith("null"):
-                    return None
+                # 解析失败时默认 consult_agent（与 Alibaba demo 一致，闲聊走 consult）
+                return "consult_agent"
             else:
                 log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(response.message),
                         input_content=user_input, output_content="")
@@ -162,7 +164,8 @@ class SupervisorAgent:
             duration_ms = int((time.perf_counter() - t0) * 1000)
             log_llm(req_id or "", "route_by_llm", DASHSCOPE_MODEL, "error", duration_ms, str(e),
                     input_content=user_input, output_content="")
-        return None
+        # 异常时默认 consult_agent（闲聊走 consult）
+        return "consult_agent"
     
     def call_sub_agent(self, agent_name: str, user_input: str, force_role: Optional[str] = None, req_id: Optional[str] = None) -> str:
         """
@@ -442,44 +445,12 @@ class SupervisorAgent:
                     traceback.print_exc(file=sys.stderr)
                     # 失败时回退到简单路由
             
-            # 简单路由（原有逻辑）
+            # 简单路由（与 Alibaba demo 一致：闲聊也走 consult_agent，无 general_chat）
             target_agent = self.route_to_agent(user_input, req_id=req_id)
-            
-            if target_agent:
-                # 需要特定子智能体处理
-                agent_response = self.call_sub_agent(target_agent, user_input, req_id=req_id)
-                content = agent_response.get("output", agent_response) if isinstance(agent_response, dict) else agent_response
-                self.history.append({"role": "assistant", "content": content})
-                return agent_response
-            else:
-                # 一般性对话，直接使用 LLM 处理
-                t0 = time.perf_counter()
-                try:
-                    response = Generation.call(
-                        model=DASHSCOPE_MODEL,
-                        messages=self.history,
-                        temperature=0.7,
-                        result_format='message'
-                    )
-                    duration_ms = int((time.perf_counter() - t0) * 1000)
-                    if response.status_code == 200:
-                        ai_message = response.output.choices[0].message.content
-                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "success", duration_ms,
-                                input_content=self.history[-1] if self.history else "", output_content=ai_message)
-                        self.history.append({
-                            "role": "assistant",
-                            "content": ai_message
-                        })
-                        return ai_message
-                    else:
-                        log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(response.message),
-                                input_content=self.history[-1] if self.history else "", output_content="")
-                        return "抱歉，处理您的请求时出现了问题，请稍后再试。"
-                except Exception as e:
-                    duration_ms = int((time.perf_counter() - t0) * 1000)
-                    log_llm(req_id or "", "general_chat", DASHSCOPE_MODEL, "error", duration_ms, str(e),
-                            input_content=self.history[-1] if self.history else "", output_content="")
-                    raise
+            agent_response = self.call_sub_agent(target_agent, user_input, req_id=req_id)
+            content = agent_response.get("output", agent_response) if isinstance(agent_response, dict) else agent_response
+            self.history.append({"role": "assistant", "content": content})
+            return content
             
         except Exception as e:
             error_msg = f"处理请求时出现错误: {str(e)}"

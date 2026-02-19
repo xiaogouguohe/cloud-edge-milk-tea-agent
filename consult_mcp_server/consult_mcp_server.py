@@ -81,19 +81,7 @@ class ConsultMCPServer:
             handler=self._search_knowledge
         )
         
-        # 2. 获取所有产品列表工具
-        self.mcp_server.register_tool_func(
-            name="consult-get-products",
-            description="获取云边奶茶铺所有可用产品的完整列表，包括产品名称、详细描述、当前价格和库存数量。帮助用户了解可选择的奶茶产品。",
-            parameters={
-                "type": "object",
-                "properties": {},
-                "required": []
-            },
-            handler=self._get_products
-        )
-        
-        # 3. 获取产品详细信息工具
+        # 2. 获取产品详细信息工具
         self.mcp_server.register_tool_func(
             name="consult-get-product-info",
             description="获取指定产品的详细信息，包括产品描述、价格和当前库存状态。帮助用户了解产品的具体信息。",
@@ -110,7 +98,7 @@ class ConsultMCPServer:
             handler=self._get_product_info
         )
         
-        # 4. 根据产品名称模糊搜索产品工具
+        # 3. 根据产品名称模糊搜索产品工具
         self.mcp_server.register_tool_func(
             name="consult-search-products",
             description="根据产品名称进行模糊搜索，返回匹配的产品列表。支持部分名称搜索，例如搜索'云'可以找到所有包含'云'字的产品。",
@@ -136,23 +124,6 @@ class ConsultMCPServer:
         except Exception as e:
             print(f"[ConsultMCPServer] _search_knowledge 失败: {str(e)}", file=sys.stderr, flush=True)
             return f"知识库检索失败: {str(e)}"
-    
-    def _get_products(self) -> str:
-        """工具：获取所有产品列表"""
-        print(f"[ConsultMCPServer] 调用 _get_products", file=sys.stderr, flush=True)
-        try:
-            products = self.consult_service.get_all_products()
-            if not products:
-                return "当前没有任何可用产品。"
-            
-            result = f"云边奶茶铺可用产品列表（共 {len(products)} 个产品）:\n\n"
-            for product in products:
-                result += f"- {product['name']}: {product['description']}, 价格: ¥{product['price']:.2f}, 库存: {product['stock']}件\n"
-            
-            return result.strip()
-        except Exception as e:
-            print(f"[ConsultMCPServer] _get_products 失败: {str(e)}", file=sys.stderr, flush=True)
-            return f"获取产品列表失败: {str(e)}"
     
     def _get_product_info(self, productName: str) -> str:
         """工具：获取产品详细信息"""

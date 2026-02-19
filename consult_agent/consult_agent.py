@@ -125,18 +125,11 @@ class ConsultAgent:
             工具调用信息，格式: {"tool": "tool_name", "parameters": {...}}
         """
         user_input_lower = user_input.lower()
+        products = ["云边茉莉", "桂花云露", "云雾观音", "红茶拿铁", "抹茶相思"]
         
-        # 检查是否需要调用工具
-        if "产品列表" in user_input or "所有产品" in user_input or "有哪些产品" in user_input:
-            return {
-                "tool": "consult-get-products",
-                "mcp_server": "consult-mcp-server",
-                "parameters": {}
-            }
-        
+        # 检查是否需要调用工具（产品列表/菜单/库存查询已路由到 order_agent，此处不再处理）
         if "产品信息" in user_input or "产品详情" in user_input:
             # 尝试提取产品名称
-            products = ["云边茉莉", "桂花云露", "云雾观音", "红茶拿铁", "抹茶相思"]
             for p in products:
                 if p in user_input:
                     return {
